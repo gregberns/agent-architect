@@ -1,0 +1,5 @@
+(library
+ (name bindings)
+ (modes melange)
+ (libraries relude)
+ (melange.compile_flags :standard -open Relude.Globals))

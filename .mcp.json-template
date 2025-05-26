@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "serena": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "/<<SERENA BASE LOCAL PATH>>/serena",
+        "serena-mcp-server",
+        "--project-file",
+        "/<<YOUR SOURCE PATH>>/.serena/project.yml"
+      ]
+    },
+    "plane": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@makeplane/plane-mcp-server"
+      ],
+      "env": {
+        "PLANE_API_KEY": "<<API KEY>>",
+        "PLANE_API_HOST_URL": "https://api.plane.so/",
+        "PLANE_WORKSPACE_SLUG": "agent-architect"
+      }
+    }
+  }
+}

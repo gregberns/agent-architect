@@ -7,7 +7,7 @@
     "init": "opam switch create . 5.2.0 -y --deps-only && npm run install-opam-npm",
     "install-opam-npm": "npm install && npm run install-opam && npm run check-npm-deps",
     "dune": "opam exec -- dune",
-    "build": "npm run dune -- build @react @node",
+    "build": "npm run dune -- build @agentArchitect",
     "build-verbose": "npm run build -- --verbose",
     "clean": "npm run dune -- clean",
     "format": "npm run format-check -- --auto-promote",
@@ -37,6 +37,9 @@
     "react-dom": "^18.0.0"
   },
   "devDependencies": {
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.0.0",
+    "@testing-library/jest-dom": "^5.10.0",
     "webpack": "^5.73.0",
     "webpack-cli": "^4.9.2",
     "webpack-dev-server": "^4.9.1"

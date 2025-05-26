@@ -1,0 +1,11 @@
+; (include_subdirs unqualified)
+
+(dirs :standard __tests__)
+
+(library
+ (name utils)
+ (modes melange)
+ (libraries relude)
+ (melange.compile_flags :standard -open Relude.Globals)
+ (preprocess
+  (pps melange.ppx)))

@@ -1,0 +1,11 @@
+; (include_subdirs unqualified)
+
+(dirs :standard __tests__)
+
+(library
+ (name effectsTest)
+ (modes melange)
+ (libraries effects bindings testUtils relude melange-jest.jest)
+ (melange.compile_flags :standard -open Relude.Globals)
+ (preprocess
+  (pps melange.ppx)))

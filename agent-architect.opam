@@ -1,0 +1,38 @@
+opam-version: "2.0"
+synopsis: "Melange project"
+description: "Minimal melange project"
+maintainer: ["<your_name>"]
+authors: ["<your_name>"]
+license: "MIT"
+homepage: "https://github.com/your/project"
+bug-reports: "https://github.com/your/project/issues"
+depends: [
+  "ocaml"
+  "reason" {>= "3.13.0"}
+  "dune" {>= "3.9"}
+  "melange" {>= "4.0.0"}
+  "reason-react" {>= "0.15.0"}
+  "reason-react-ppx"
+  "opam-check-npm-deps" {with-dev-setup}
+  "ocaml-lsp-server" {with-dev-setup}
+  "dot-merlin-reader" {with-dev-setup}
+  "odoc" {with-doc}
+  "relude"
+]
+dev-repo: "git+https://github.com/gregberns/agent-architect"
+pin-depends: [
+  [ "bastet.dev" "git+https://github.com/qwickshifts/bastet.git#melange4plus" ]
+  # [ "bs-css.dev" "git+https://github.com/qwickshifts/bs-css.git#melange3" ]
+  # [ "bs-decode.dev" "git+https://github.com/qwickshifts/bs-decode.git#melange3" ]
+  # [ "bs-express.dev" "git+https://github.com/qwickshifts/bs-express.git#melange3" ]
+  # [ "bs-luxon.dev" "git+https://github.com/qwickshifts/bs-luxon.git#melange3" ]
+  # [ "bs-winston.dev" "git+https://github.com/qwickshifts/bs-winston.git#melange3" ]
+  # [ "graphql_ppx.dev" "git+https://github.com/qwickshifts/graphql-ppx.git#melange3" ]
+  [ "melange-jest.dev" "git+https://github.com/melange-community/melange-jest.git#a81c56e4b4bf858b587db5fbc71acdbeff8193af" ]
+  # [ "re-debouncer.dev" "git+https://github.com/qwickshifts/rescript-debounce.git#melange3" ]
+  # [ "re-formality.dev" "git+https://github.com/qwickshifts/re-formality.git#melange3"]
+  # [ "reason-expo.dev" "git+https://github.com/qwickshifts/reason-expo.git#main" ]
+  # [ "reason-react-native.dev" "git+https://github.com/qwickshifts/reason-react-native.git#0.74.3" ]
+  # [ "relude-fetch.dev" "git+https://github.com/qwickshifts/relude-fetch.git#melange3" ]
+  [ "relude.dev" "git+https://github.com/qwickshifts/relude.git#melange4plus" ]
+]
