@@ -1,0 +1,51 @@
+## AstParser Module Implementation Details
+
+### Architecture
+- **Dependency Injection Pattern**: Uses `parserDependencies` record for testability
+- **Parser Selection**: Automatic based on file extension (.ts/.tsx → TypeScript, .js/.jsx → JavaScript)
+- **Dual Parser Support**: TypeScript Compiler API + Babel parser integration
+- **IO Monad Pattern**: All operations return `IO.t(result, error)` for composability
+
+### Key Types
+```reasonml
+type parserDependencies = {
+  getCurrentTimestamp: unit => float,
+  parseTypeScript: (string, parserConfig) => IO.t(Js.Json.t, Js.Exn.t),
+  parseJavaScript: (string, parserConfig) => IO.t(Js.Json.t, Js.Exn.t),
+  convertToAstNode: Js.Json.t => IO.t(astNode, Js.Exn.t),
+};
+
+type parseResult = {
+  ast: astNode,
+  sourceText: string, 
+  fileName: string,
+  parseTime: float,
+  parserUsed: string,
+};
+
+type astNode = {
+  nodeType,
+  name: option(string),
+  location: option(sourceLocation), 
+  children: list(astNode),
+  metadata: Js.Json.t,  // NOT list!
+};
+```
+
+### Function Signatures
+- `parseSourceCode(sourceText, fileName, ~config?, ~deps, ())` - Main parsing function
+- `extractNodesByType(ast: astNode, targetType)` - Takes single astNode, not list
+- `getFunctions/getClasses/getImports/getExports(ast: astNode)` - All take single astNode
+
+### Implementation Patterns
+1. **Error Handling**: IO monad with Js.Exn.t for JavaScript interop errors
+2. **JSON Processing**: Uses Js.Json.t for AST representation from parsers
+3. **Configuration**: Separate defaults for TypeScript vs JavaScript parsing
+4. **Metadata Storage**: Raw JSON stored in metadata field for extensibility
+
+### Testing Approach
+- Mock dependencies to avoid complex parser setup
+- Focus on API contracts and data flow
+- Test utility functions independently
+- 39% coverage achieved with mocked dependencies
+- Real integration tests would require actual TypeScript/Babel parser setup

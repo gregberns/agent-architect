@@ -1,0 +1,78 @@
+## Testing Patterns for Melange/ReasonML Projects
+
+### Test Framework Setup
+- Uses Jest with Melange compilation to JavaScript
+- Test files: `src/effects/__tests__/*_Tests.re`
+- Run tests: `yarn run jest`
+- Coverage: `yarn run jest --coverage --collectCoverageFrom="**/*FileName*"`
+
+### Key Testing Patterns
+
+#### 1. Test File Structure
+```reasonml
+open Jest;
+open Expect; 
+open TestUtils;
+open Relude.Globals;
+open Effects.ModuleName;
+
+describe("ModuleName", () => {
+  describe("functionName", () => {
+    test("should do something", () => {
+      expect(result) |> toBe(expectedValue)
+    });
+    
+    Test.testIO("should handle IO operations", () => {
+      someIOOperation()
+      |> IO.map(result => expect(result) |> toBe(expectedValue))
+    });
+  });
+});
+```
+
+#### 2. Critical Testing Rules
+- **One assertion per test** - Jest requires single expect per test
+- Use `Test.testIO()` for IO monad operations
+- Use `test()` for pure functions
+- Prefix unused variables with underscore: `_unusedParam`
+
+#### 3. Type System Considerations
+- **Record Types**: Must match exact field structure
+```reasonml
+// If type is: type sourceLocation = {start: position, end_: position, source: option(string)}
+let mockLocation = {
+  start: {line: 1, column: 0},
+  end_: {line: 10, column: 20}, 
+  source: None
+};
+```
+
+- **String Functions**: Use correct parameters
+```reasonml
+String.contains(~search="text", haystack)  // NOT ~substring
+List.contains(item, list)                   // NOT ~equal=String.eq
+```
+
+#### 4. Dependency Injection Testing
+- Create mock dependencies that match exact type signatures
+- Use realistic return types (e.g., `IO.pure(mockData)`)
+- Mock external bindings (TypeScript, Babel parsers)
+
+#### 5. Coverage Challenges
+- Mocked dependencies bypass real logic
+- Focus on API surface and utility functions  
+- 30-40% coverage typical for dependency-injected modules
+- Higher coverage requires integration tests with real dependencies
+
+#### 6. Common Pitfalls
+- Multiple assertions in single test (fails compilation)
+- Incorrect record field names (strict typing)
+- Wrong function parameter labels (~search vs ~substring)
+- Missing underscore prefix on unused variables (warning → error)
+- Forgetting to handle IO monad properly in tests
+
+#### 7. Test Organization
+- Group related functionality in describe blocks
+- Test both success and error cases
+- Include edge cases (empty inputs, missing data)
+- Test pure functions separately from IO operations

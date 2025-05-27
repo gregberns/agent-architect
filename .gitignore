@@ -3,6 +3,6 @@ node_modules
 _build
 _opam
 dist/
-
+coverage
 
 .mcp.json

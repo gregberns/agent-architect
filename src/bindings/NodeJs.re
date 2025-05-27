@@ -37,9 +37,18 @@ module Fs = {
  * Node.js Path bindings
  */
 module Path = {
-  [@bs.module "path"] external join: (string, string) => string = "join";
+  [@bs.module "path"] external join': (string, string) => string = "join";
+  let join = (path1, path2) => IO.triesJS(() => join'(path1, path2));
 
-  [@bs.module "path"] external normalize: string => string = "normalize";
+  [@bs.module "path"] external normalize': string => string = "normalize";
+  let normalize = path => IO.triesJS(() => normalize'(path));
+};
+
+/**
+ * Node.js Process bindings
+ */
+module Process = {
+  [@bs.module "process"] external cwd: unit => string = "cwd";
 };
 
 /**

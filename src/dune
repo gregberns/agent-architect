@@ -34,6 +34,13 @@
 (melange.emit
  (target agentArchitect)
  (alias agentArchitect)
- (libraries reason-react effects bindings utils testUtils effectsTest)
+ (libraries
+  reason-react
+  effects
+  bindings
+  utils
+  testUtils
+  bindingsTest
+  effectsTest)
  ; (modules hello)
  (module_systems commonjs))

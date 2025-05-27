@@ -1,0 +1,43 @@
+## Melange JavaScript Bindings Patterns
+
+### External Function Bindings
+```reasonml
+// Correct pattern for function bindings
+[@bs.module "typescript"] external createSourceFile': (string, string, int, bool) => 'a = "createSourceFile";
+
+// NOT object bindings (causes "External identifiers must be functions" error)
+[@bs.module "typescript"] external syntaxKind: 'a = "SyntaxKind";  // WRONG
+```
+
+### String Parameter Handling
+- Always check parameter order and types
+- Some functions expect options/config objects as second parameter
+```reasonml
+// Check if function expects (text, options) or (options, text)
+String.contains(~search="needle", haystack)
+String.sliceToEnd(~from=index, text)  // Check parameter order
+```
+
+### Type Conversion Patterns
+```reasonml
+// JSON handling
+`JSON(jsonString) -> Js.Json.t via Js.Json.parseExn
+Js.Json.t -> object via Js.Json.decodeObject
+Extract fields via Js.Dict.get(obj, "fieldName")
+
+// External modules
+[@bs.module "babel"] external parse': (string, 'a) => 'b = "parse";
+```
+
+### Common Compilation Errors
+1. **External binding syntax** - Must be functions, not objects
+2. **Unused variables** - Prefix with underscore or compilation fails  
+3. **Type mismatches** - Generic types ('a, 'b) help with JS interop
+4. **Missing parameter labels** - Many ReasonML functions require labeled parameters
+5. **List vs Array confusion** - JS arrays need Array.fromList conversion
+
+### Binding Organization  
+- Group related bindings in modules (e.g., `module Raw = { externals }`)
+- Create wrapper functions for complex JS interop
+- Use IO.t for error-prone operations (parsing, file system)
+- Provide OCaml-friendly interfaces over raw JS functions

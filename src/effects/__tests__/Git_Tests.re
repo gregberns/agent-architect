@@ -48,8 +48,7 @@ describe("Git", () => {
     test("should return commit SHA with valid length", () => {
       let result = getCurrentCommitSha(".");
       switch (result) {
-      | Success(sha) =>
-        expect(String.length(sha) >= 7) |> toEqual(true)
+      | Success(sha) => expect(String.length(sha) >= 7) |> toEqual(true)
       | Error(_) => expect(false) |> toEqual(true)
       };
     });
@@ -125,8 +124,7 @@ describe("Git", () => {
     test("should return non-negative list length", () => {
       let result = getTrackedFiles(".");
       switch (result) {
-      | Success(files) =>
-        expect(List.length(files) >= 0) |> toEqual(true)
+      | Success(files) => expect(List.length(files) >= 0) |> toEqual(true)
       | Error(_) => expect(false) |> toEqual(true)
       };
     });

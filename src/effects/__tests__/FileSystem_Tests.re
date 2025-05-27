@@ -10,7 +10,7 @@ describe("FileSystem", () => {
     )
   });
   describe("getFileExtension", () => {
-    test("should extract .js extension", () => 
+    test("should extract .js extension", () =>
       expect(getFileExtension("test.js")) |> toEqual(Some(".js"))
     );
     test("should extract extension from nested filename", () =>
@@ -32,7 +32,8 @@ describe("FileSystem", () => {
       expect(hasTargetExtension("test.js", jsExtensions)) |> toEqual(true)
     );
     test("should match .tsx extension", () =>
-      expect(hasTargetExtension("component.tsx", jsExtensions)) |> toEqual(true)
+      expect(hasTargetExtension("component.tsx", jsExtensions))
+      |> toEqual(true)
     );
     test("should not match .py extension", () =>
       expect(hasTargetExtension("test.py", jsExtensions)) |> toEqual(false)

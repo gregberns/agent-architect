@@ -160,7 +160,7 @@ let rec discoverFiles =
     |> IO.flatMap(entries =>
          entries
          |> Array.toList
-         |> List.map(entry => Path.join(rootPath, entry))
+         |> List.map(entry => Path.join'(rootPath, entry))
          |> List.filter(path =>
               !shouldIgnoreFile(path, config.gitignorePatterns)
             )
@@ -198,7 +198,7 @@ let rec discoverFiles =
 let discoverProjectFiles =
     (projectRoot: string, ~customConfig: option(discoveryConfig)=?, ())
     : IO.t(list(fileInfo), Js.Exn.t) => {
-  Path.join(projectRoot, ".gitignore")
+  Path.join'(projectRoot, ".gitignore")
   |> parseGitignore
   |> IO.flatMap(gitignorePatterns => {
        let config =

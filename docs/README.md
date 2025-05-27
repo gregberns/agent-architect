@@ -1,14 +1,4 @@
 
-
-
-
-
-
-
-
-
-
-
 ## Initial Discovery
 
 Initial Prompt
