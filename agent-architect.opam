@@ -18,12 +18,13 @@ depends: [
   "dot-merlin-reader" {with-dev-setup}
   "odoc" {with-doc}
   "relude"
+  "bs-decode"
 ]
 dev-repo: "git+https://github.com/gregberns/agent-architect"
 pin-depends: [
   [ "bastet.dev" "git+https://github.com/qwickshifts/bastet.git#melange4plus" ]
   # [ "bs-css.dev" "git+https://github.com/qwickshifts/bs-css.git#melange3" ]
-  # [ "bs-decode.dev" "git+https://github.com/qwickshifts/bs-decode.git#melange3" ]
+  [ "bs-decode.dev" "git+https://github.com/qwickshifts/bs-decode.git#melange4plus" ]
   # [ "bs-express.dev" "git+https://github.com/qwickshifts/bs-express.git#melange3" ]
   # [ "bs-luxon.dev" "git+https://github.com/qwickshifts/bs-luxon.git#melange3" ]
   # [ "bs-winston.dev" "git+https://github.com/qwickshifts/bs-winston.git#melange3" ]

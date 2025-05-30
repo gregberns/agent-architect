@@ -36,10 +36,12 @@
  (alias agentArchitect)
  (libraries
   reason-react
-  effects
-  bindings
   utils
   testUtils
+  bindings
+  effects
+  core
+  exe
   bindingsTest
   effectsTest)
  ; (modules hello)

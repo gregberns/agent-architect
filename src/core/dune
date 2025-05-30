@@ -3,9 +3,9 @@
 (dirs :standard __tests__)
 
 (library
- (name utils)
+ (name core)
  (modes melange)
- (libraries relude bs-decode)
+ (libraries relude bindings melange-jest.jest)
  (melange.compile_flags :standard -open Relude.Globals)
  (preprocess
   (pps melange.ppx)))

@@ -49,6 +49,41 @@ module Path = {
  */
 module Process = {
   [@bs.module "process"] external cwd: unit => string = "cwd";
+
+  /* Environment variables - raw external binding */
+  // [@bs.module "process"] external env': 'a = "env";
+
+  // /* Helper to get environment variable by name */
+  // [@bs.get_index] external getEnvVar': ('a, string) => Js.nullable(string) = "";
+
+  // /* IO-wrapped environment variable getter */
+  // let getEnv = (varName: string): IO.t(option(string), Js.Exn.t) =>
+  //   IO.triesJS(() => {
+  //     let envObj = env';
+  //     let nullableValue = getEnvVar'(envObj, varName);
+  //     Js.Nullable.toOption(nullableValue);
+  //   });
+
+  [@mel.module "dotenv"] external getEnvVars: unit => unit = "config";
+
+  // let getEnvVars = () =>
+  //   getEnvVars()
+  //   |> (() => Node.Process.process##env)
+  //   |> (
+  //     Js.Dict.map(~f=(. x) => x |> Utils.JsonUtils.Encode.string)
+  //     >> Utils.JsonUtils.Encode.dict
+  //   );
+  let getEnvVars = () => getEnvVars() |> (() => Node.Process.process##env);
+
+  /* Get environment variable with default value */
+  let getEnvWithDefault = (varName: string, defaultValue: string): string =>
+    getEnvVars() |> Js.Dict.get(_, varName) |> Option.getOrElse(defaultValue);
+
+  let getEnvWithDefaultIO =
+      (varName: string, defaultValue: string): IO.t(string, Js.Exn.t) =>
+    getEnvVars()
+    |> IO.pure
+    |> IO.map(Js.Dict.get(_, varName) >> Option.getOrElse(defaultValue));
 };
 
 /**
