@@ -3,9 +3,9 @@
 (dirs :standard __tests__)
 
 (library
- (name models)
+ (name modelTypes)
  (modes melange)
- (libraries relude modelCore melange-jest.jest)
+ (libraries relude melange-jest.jest)
  (melange.compile_flags :standard -open Relude.Globals)
  (preprocess
   (pps melange.ppx)))

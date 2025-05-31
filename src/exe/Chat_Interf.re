@@ -1,107 +1,55 @@
-module type DB = {
-  let connect: unit => unit;
+module EmitMessage = {
+  type t = {content: string};
 };
 
-module App = (Database: DB) => {
-  let run = () => Database.connect();
+module type SINK = {
+  type t;
+  let write: EmitMessage.t => IO.t(unit, 'e);
 };
 
-module PostgresDB: DB = {
-  let connect = () => print_endline("Connecting to Postgres");
+module type EMITTER = {
+  let emitText: string => IO.t(unit, 'e);
+  let emitMessage: EmitMessage.t => IO.t(unit, 'e);
 };
 
-module MyApp = App(PostgresDB);
+module ConsoleSink: SINK = {
+  type t;
+  let write = message => Js.log(message) |> IO.pure;
+};
+
+module BasicEmitter = (Sink: SINK) : EMITTER => {
+  let emitText = (message: string) => Sink.write({content: message});
+  let emitMessage = (message: EmitMessage.t) => Sink.write(message);
+};
+
+module ConsoleEmitter = BasicEmitter(ConsoleSink);
 
 //
 //
 //
 //
+//
 
-// module Message = {
-//   type t = {
-//     role: string,
-//     content: string,
-//   };
-//   let make = (~role, content) => {
-//     role,
-//     content,
-//   };
-//   let makeSystem = content => make(~role="system", content);
-//   let makeAssistant = content => make(~role="assistant", content);
-//   let makeUser = content => make(~role="user", content);
-// };
+module Chat = (Model: ModelTypes.Model.MODEL, Emit: EMITTER) => {
+  let ( let* ) = IO.bind;
 
-// module ModelInput = {
-//   type t = {messages: list(Core.Message.t)};
-//   let make = messages => {messages: messages};
-//   let make1 = message => make([message]);
-//   let add = ({messages}, message) => make(List.append(message, messages));
-// };
+  let init = () => Model.make();
 
-// module AIMessageChunk = {
-//   type t = {text: string};
-// };
-
-// module type MODEL = {
-//   type t;
-//   type err = Js.Exn.t;
-//   let make: unit => IO.t(t, err);
-//   let invoke: (t, Core.ModelInput.t) => IO.t(AIMessageChunk.t, err);
-// };
-
-module GeminiModel =
-       (
-         Config: {
-           let model: string;
-           let apiKey: string;
-           let temperature: float;
-         },
-       )
-       : ModelCore.Model.MODEL => {
-  type t = Bindings.LangChain.model;
-  type err = Js.Exn.t;
-
-  let make = () => {
-    let model =
-      Bindings.LangChain.createGoogleModel(
-        ~model=Config.model,
-        ~apiKey=Config.apiKey,
-        ~temperature=Config.temperature |> Bindings.LangChain.Temperature.make,
-        (),
+  let sendMessage = (model, message: ModelTypes.ModelInput.t) => {
+    let* _ =
+      Emit.emitText(
+        message
+        |> ModelTypes.ModelInput.last
+        |> Option.map(ModelTypes.Message.toDisplayString)
+        |> Option.getOrElse("<<No Last Message Found>>"),
       );
 
-    model |> IO.pure;
+    Model.invoke(model, message)
+    |> IO.flatMap(({text} as msg: ModelTypes.AIMessageChunk.t) =>
+         Emit.emitText(text) |> IO.map(() => msg)
+       );
   };
-
-  let mapMessage =
-      ({role, content}: ModelCore.Message.t)
-      : Bindings.LangChain.messageObject => {
-    role,
-    content,
-  };
-  let mapResponse =
-      ({content, _}: Bindings.LangChain.chatResponse)
-      : ModelCore.AIMessageChunk.t => {
-    text: content,
-  };
-
-  let invoke = (model: t, {messages}: ModelCore.ModelInput.t) =>
-    Bindings.LangChain.invokeWithMessageObjects(
-      model,
-      messages |> List.toArray |> Array.map(mapMessage),
-    )
-    |> IO.map(mapResponse);
 };
-
-module Chat = (Model: ModelCore.Model.MODEL) => {
-  let init = () => Model.make();
-  let sendMessage = message => Model.invoke(message);
-};
-
-// Need a way to emit messages.
-//  When in Console, should be write lines (with no delay)
-//  When elsewhere, need to emit messages through a configurable module
-//    that could say write to a web socket
 
 //
 //
@@ -112,13 +60,13 @@ let googleApiKey =
   Bindings.NodeJs.Process.getEnvWithDefault("GEMINI_API_KEY", "NOT VALID");
 
 module LoadedGeminiModel =
-  GeminiModel({
+  Model.Gemini.Model({
     let model = "gemini-2.0-flash";
     let apiKey = googleApiKey;
     let temperature = 1.0;
   });
 
-module MyChat = Chat(LoadedGeminiModel);
+module MyChat = Chat(LoadedGeminiModel, ConsoleEmitter);
 
 //
 //
@@ -126,29 +74,30 @@ module MyChat = Chat(LoadedGeminiModel);
 //
 
 let simpleStringChat = (): IO.t(unit, Js.Exn.t) => {
-  open ModelCore;
+  open ModelTypes;
   let ( let* ) = IO.bind;
   Js.Console.log("=== Starting Simple String Chat ===");
-  let model = MyChat.init();
+  let* model = MyChat.init();
 
   let history =
     "What is the capital of France? Please answer in one sentence."
     |> Message.makeUser
     |> ModelInput.make1;
 
-  let* model = model;
   let* {text: response1} = MyChat.sendMessage(model, history);
+
   let history = ModelInput.add(history, response1 |> Message.makeAssistant);
 
-  Js.log2("Model Response1:", response1);
+  // Js.log2("Model Response1:", response1);
 
   let prompt2 = "Using the answer, what is a prominent landmark in that location? Be concise.";
 
   let history = ModelInput.add(history, prompt2 |> Message.makeUser);
 
-  let* {text: response2} = MyChat.sendMessage(model, history);
+  let* {text: _response2} = MyChat.sendMessage(model, history);
 
-  Js.log2("Model Response2:", response2) |> IO.pure;
+  // Js.log2("Model Response2:", response2) |> IO.pure;
+  IO.pure();
 };
 
 simpleStringChat() |> IO.unsafeRunAsync(_ => ());

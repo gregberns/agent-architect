@@ -42,10 +42,10 @@
   effects
   exe
   ; Model
-  models
-  modelCore
+  model
+  modelTypes
   modelBindings
-  modelBindingsTest
+  ; modelBindingsTest
   ; 
   effectsTest)
  ; (modules hello)
