@@ -40,9 +40,13 @@
   testUtils
   bindings
   effects
-  core
   exe
-  bindingsTest
+  ; Model
+  models
+  modelCore
+  modelBindings
+  modelBindingsTest
+  ; 
   effectsTest)
  ; (modules hello)
  (module_systems commonjs))

@@ -3,9 +3,9 @@
 (dirs :standard __tests__)
 
 (library
- (name exe)
+ (name modelBindingsTest)
  (modes melange)
- (libraries relude models bindings)
+ (libraries modelBindings testUtils relude melange-jest.jest)
  (melange.compile_flags :standard -open Relude.Globals)
  (preprocess
   (pps melange.ppx)))

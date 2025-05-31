@@ -17,37 +17,37 @@ module MyApp = App(PostgresDB);
 //
 //
 
-module Message = {
-  type t = {
-    role: string,
-    content: string,
-  };
-  let make = (~role, content) => {
-    role,
-    content,
-  };
-  let makeSystem = content => make(~role="system", content);
-  let makeAssistant = content => make(~role="assistant", content);
-  let makeUser = content => make(~role="user", content);
-};
+// module Message = {
+//   type t = {
+//     role: string,
+//     content: string,
+//   };
+//   let make = (~role, content) => {
+//     role,
+//     content,
+//   };
+//   let makeSystem = content => make(~role="system", content);
+//   let makeAssistant = content => make(~role="assistant", content);
+//   let makeUser = content => make(~role="user", content);
+// };
 
-module ModelInput = {
-  type t = {messages: list(Message.t)};
-  let make = messages => {messages: messages};
-  let make1 = message => make([message]);
-  let add = ({messages}, message) => make(List.append(message, messages));
-};
+// module ModelInput = {
+//   type t = {messages: list(Core.Message.t)};
+//   let make = messages => {messages: messages};
+//   let make1 = message => make([message]);
+//   let add = ({messages}, message) => make(List.append(message, messages));
+// };
 
-module AIMessageChunk = {
-  type t = {text: string};
-};
+// module AIMessageChunk = {
+//   type t = {text: string};
+// };
 
-module type MODEL = {
-  type t;
-  type err = Js.Exn.t;
-  let make: unit => IO.t(t, err);
-  let invoke: (t, ModelInput.t) => IO.t(AIMessageChunk.t, err);
-};
+// module type MODEL = {
+//   type t;
+//   type err = Js.Exn.t;
+//   let make: unit => IO.t(t, err);
+//   let invoke: (t, Core.ModelInput.t) => IO.t(AIMessageChunk.t, err);
+// };
 
 module GeminiModel =
        (
@@ -57,7 +57,7 @@ module GeminiModel =
            let temperature: float;
          },
        )
-       : MODEL => {
+       : ModelCore.Model.MODEL => {
   type t = Bindings.LangChain.model;
   type err = Js.Exn.t;
 
@@ -74,16 +74,18 @@ module GeminiModel =
   };
 
   let mapMessage =
-      ({role, content}: Message.t): Bindings.LangChain.messageObject => {
+      ({role, content}: ModelCore.Message.t)
+      : Bindings.LangChain.messageObject => {
     role,
     content,
   };
   let mapResponse =
-      ({content, _}: Bindings.LangChain.chatResponse): AIMessageChunk.t => {
+      ({content, _}: Bindings.LangChain.chatResponse)
+      : ModelCore.AIMessageChunk.t => {
     text: content,
   };
 
-  let invoke = (model: t, {messages}: ModelInput.t) =>
+  let invoke = (model: t, {messages}: ModelCore.ModelInput.t) =>
     Bindings.LangChain.invokeWithMessageObjects(
       model,
       messages |> List.toArray |> Array.map(mapMessage),
@@ -91,7 +93,7 @@ module GeminiModel =
     |> IO.map(mapResponse);
 };
 
-module Chat = (Model: MODEL) => {
+module Chat = (Model: ModelCore.Model.MODEL) => {
   let init = () => Model.make();
   let sendMessage = message => Model.invoke(message);
 };
@@ -124,6 +126,7 @@ module MyChat = Chat(LoadedGeminiModel);
 //
 
 let simpleStringChat = (): IO.t(unit, Js.Exn.t) => {
+  open ModelCore;
   let ( let* ) = IO.bind;
   Js.Console.log("=== Starting Simple String Chat ===");
   let model = MyChat.init();

@@ -1,5 +1,5 @@
 open Relude.Globals;
-open Bindings.LangChain;
+// open Bindings.LangChain;
 
 /**
  * Simple Chat Application
@@ -11,7 +11,8 @@ let googleApiKey =
   Bindings.NodeJs.Process.getEnvWithDefault("GEMINI_API_KEY", "NOT VALID");
 
 /* Helper function to print chat responses */
-let printResponse = (label: string, response: chatResponse): unit => {
+let printResponse =
+    (label: string, response: Bindings.LangChain.chatResponse): unit => {
   Js.Console.log("\n=== " ++ label ++ " ===");
   Js.Console.log("Content: " ++ response.content);
   switch (response.role) {
@@ -25,11 +26,15 @@ let simpleStringChat = (): IO.t(unit, Js.Exn.t) => {
   Js.Console.log("=== Starting Simple String Chat ===");
 
   let googleModel =
-    createGoogleModel(~model="gemini-2.0-flash", ~apiKey=googleApiKey, ());
+    Bindings.LangChain.createGoogleModel(
+      ~model="gemini-2.0-flash",
+      ~apiKey=googleApiKey,
+      (),
+    );
 
   let prompt = "What is the capital of France? Please answer in one sentence.";
 
-  invokeWithString(googleModel, prompt)
+  Bindings.LangChain.invokeWithString(googleModel, prompt)
   |> IO.map(googleResponse => {
        printResponse("Google Gemini Response", googleResponse)
      });
@@ -40,19 +45,30 @@ let conversationChat = (): IO.t(unit, Js.Exn.t) => {
   Js.Console.log("\n=== Starting Conversation Chat ===");
 
   let model =
-    createGoogleModel(~model="gemini-2.0-flash", ~apiKey=googleApiKey, ());
+    Bindings.LangChain.createGoogleModel(
+      ~model="gemini-2.0-flash",
+      ~apiKey=googleApiKey,
+      (),
+    );
 
   let userMessage =
-    createHumanMessage("Explain quantum computing in simple terms.");
+    Bindings.LangChain.createHumanMessage(
+      "Explain quantum computing in simple terms.",
+    );
 
-  invokeWithHumanMessages(model, [|userMessage|])
+  Bindings.LangChain.invokeWithHumanMessages(model, [|userMessage|])
   |> IO.flatMap(response1 => {
        printResponse("First Response", response1);
 
        /* Follow-up question */
        let followUpMessage =
-         createHumanMessage("Can you give me a practical example?");
-       invokeWithHumanMessages(model, [|followUpMessage|]);
+         Bindings.LangChain.createHumanMessage(
+           "Can you give me a practical example?",
+         );
+       Bindings.LangChain.invokeWithHumanMessages(
+         model,
+         [|followUpMessage|],
+       );
      })
   |> IO.map(response2 => {printResponse("Follow-up Response", response2)});
 };
@@ -62,15 +78,19 @@ let messageObjectsChat = (): IO.t(unit, Js.Exn.t) => {
   Js.Console.log("\n=== Starting Message Objects Chat ===");
 
   let model =
-    createGoogleModel(~model="gemini-2.0-flash", ~apiKey=googleApiKey, ());
+    Bindings.LangChain.createGoogleModel(
+      ~model="gemini-2.0-flash",
+      ~apiKey=googleApiKey,
+      (),
+    );
 
   let messages =
-    createMessages([
+    Bindings.LangChain.createMessages([
       (`System, "You are a creative writer. Write in a poetic style."),
       (`Human, "Describe a sunset over the ocean."),
     ]);
 
-  invokeWithMessageObjects(model, messages)
+  Bindings.LangChain.invokeWithMessageObjects(model, messages)
   |> IO.map(response => {printResponse("Creative Response", response)});
 };
 
