@@ -70,6 +70,38 @@ type chatResponse = {
   // text: string,
 };
 
+/* LangGraph SDK types */
+type clientConfig = {
+  [@mel.as "apiUrl"]
+  apiUrl: string,
+};
+
+type client;
+type thread;
+type run;
+
+type threadResponse = {
+  [@mel.as "thread_id"]
+  thread_id: string,
+};
+
+type runResponse = {
+  [@mel.as "run_id"]
+  run_id: string,
+};
+
+type runInput = {
+  [@mel.as "messages"]
+  messages: array(messageObject),
+};
+
+type runConfig = {
+  [@mel.as "input"]
+  input: runInput,
+  [@mel.as "multitaskStrategy"]
+  multitaskStrategy: option(string),
+};
+
 /* Raw bindings - all with apostrophe suffix */
 module Raw = {
   /* Message constructors - these are pure, no apostrophe needed */
@@ -101,6 +133,24 @@ module Raw = {
   external invokeWithMessageObjects':
     (model, Js.Array.t(messageObject)) => Js.Promise.t(chatResponse) =
     "invoke";
+
+  /* LangGraph SDK Client bindings */
+  [@mel.module "@langchain/langgraph-sdk"] [@mel.new]
+  external createClient: clientConfig => client = "Client";
+
+  [@mel.get] external threads: client => 'a = "threads";
+  [@mel.get] external runs: client => 'a = "runs";
+
+  [@mel.send]
+  external createThread': 'a => Js.Promise.t(threadResponse) = "create";
+
+  [@mel.send]
+  external createRun':
+    ('a, string, string, runConfig) => Js.Promise.t(runResponse) =
+    "create";
+
+  [@mel.send]
+  external joinRun': ('a, string, string) => Js.Promise.t(unit) = "join";
 };
 
 /* Public API */
@@ -169,6 +219,43 @@ let invokeWithMessageObjects =
     Raw.invokeWithMessageObjects'(model, messages)
   );
 
+/* LangGraph SDK Client functions - effectful operations wrapped in IO */
+let createClient = (~apiUrl: string): client =>
+  Raw.createClient({apiUrl: apiUrl});
+
+let createThread = (client: client): IO.t(threadResponse, Js.Exn.t) =>
+  Utils.IOUtils.fromPromiseWithJsExn(() =>
+    Raw.createThread'(Raw.threads(client))
+  );
+
+let createRun =
+    (
+      client: client,
+      ~threadId: string,
+      ~assistantId: string,
+      ~input: runInput,
+      ~multitaskStrategy: option(string)=?,
+      (),
+    )
+    : IO.t(runResponse, Js.Exn.t) =>
+  Utils.IOUtils.fromPromiseWithJsExn(() =>
+    Raw.createRun'(
+      Raw.runs(client),
+      threadId,
+      assistantId,
+      {
+        input,
+        multitaskStrategy,
+      },
+    )
+  );
+
+let joinRun =
+    (client: client, ~threadId: string, ~runId: string): IO.t(unit, Js.Exn.t) =>
+  Utils.IOUtils.fromPromiseWithJsExn(() =>
+    Raw.joinRun'(Raw.runs(client), threadId, runId)
+  );
+
 /* Convenience function for creating message objects - pure function */
 let createMessageObject =
     (~role: messageRole, ~content: string): messageObject => {
@@ -193,3 +280,8 @@ let createMessages =
       messages,
     ),
   );
+
+/* Helper to create run input - pure function */
+let createRunInput = (messages: array(messageObject)): runInput => {
+  messages: messages,
+};

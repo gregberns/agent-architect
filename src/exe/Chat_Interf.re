@@ -1,28 +1,38 @@
-module EmitMessage = {
-  type t = {content: string};
-};
-
-module type SINK = {
+module ConsoleSink: Emitter.SINK = {
   type t;
-  let write: EmitMessage.t => IO.t(unit, 'e);
-};
 
-module type EMITTER = {
-  let emitText: string => IO.t(unit, 'e);
-  let emitMessage: EmitMessage.t => IO.t(unit, 'e);
-};
+  // let prettyPrint:
+  //   {
+  //     .
+  //     type_: string,
+  //     content: string,
+  //   } =>
+  //   unit = [%mel.raw
+  //   {|
+  //   function prettyPrint(m) {
+  //     const padded = " " + m['type'] + " ";
+  //     const sepLen = Math.floor((80 - padded.length) / 2);
+  //     const sep = "=".repeat(sepLen);
+  //     const secondSep = sep + (padded.length % 2 ? "=" : "");
 
-module ConsoleSink: SINK = {
-  type t;
+  //     console.log(`${sep}${padded}${secondSep}`);
+  //     console.log("\n\n");
+  //     console.log(m.content);
+  //   }
+  // |}
+  // ];
+
+  // let write: Emitter.EmitMessage.t => IO.t(unit, 'e) =
+  // ({content}) =>
+  //   prettyPrint({
+  //     type_: "test",
+  //     content,
+  //   })
+  //   |> IO.pure;
   let write = message => Js.log(message) |> IO.pure;
 };
 
-module BasicEmitter = (Sink: SINK) : EMITTER => {
-  let emitText = (message: string) => Sink.write({content: message});
-  let emitMessage = (message: EmitMessage.t) => Sink.write(message);
-};
-
-module ConsoleEmitter = BasicEmitter(ConsoleSink);
+module ConsoleEmitter = Emitter.BasicEmitter(ConsoleSink);
 
 //
 //
@@ -30,7 +40,7 @@ module ConsoleEmitter = BasicEmitter(ConsoleSink);
 //
 //
 
-module Chat = (Model: ModelTypes.Model.MODEL, Emit: EMITTER) => {
+module Chat = (Model: ModelTypes.Model.MODEL, Emit: Emitter.EMITTER) => {
   let ( let* ) = IO.bind;
 
   let init = () => Model.make();
@@ -59,9 +69,11 @@ module Chat = (Model: ModelTypes.Model.MODEL, Emit: EMITTER) => {
 let googleApiKey =
   Bindings.NodeJs.Process.getEnvWithDefault("GEMINI_API_KEY", "NOT VALID");
 
+let gemini_2_0_flash = "gemini-2.0-flash";
+
 module LoadedGeminiModel =
   Model.Gemini.Model({
-    let model = "gemini-2.0-flash";
+    let model = gemini_2_0_flash;
     let apiKey = googleApiKey;
     let temperature = 1.0;
   });
