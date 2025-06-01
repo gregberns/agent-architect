@@ -44,7 +44,6 @@
   ; Model
   model
   modelTypes
-  modelBindings
   ; modelBindingsTest
   ; 
   effectsTest)
