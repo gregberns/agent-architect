@@ -8,7 +8,7 @@ open Relude.Globals;
 
 /* Helper function to create API key */
 let googleApiKey =
-  Bindings.NodeJs.Process.getEnvWithDefault("GEMINI_API_KEY", "NOT VALID");
+  Bindings.NodeJs.Process.getEnvWithDefault("GOOGLE_API_KEY", "NOT VALID");
 
 /* Helper function to print chat responses */
 let printResponse =

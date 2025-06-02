@@ -13,7 +13,8 @@ NC='\033[0m' # No Color
 
 # Project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CHAT_JS_PATH="${PROJECT_ROOT}/_build/default/src/agentArchitect/src/exe/Chat_Interf.js"
+# CHAT_JS_PATH="${PROJECT_ROOT}/_build/default/src/agentArchitect/src/exe/Chat_Interf.js"
+CHAT_JS_PATH="${PROJECT_ROOT}/_build/default/src/agentArchitect/src/exe/EvalMbpp.js"
 
 echo -e "${GREEN}🚀 Agent Architect - Chat Application Runner${NC}"
 echo "Project root: ${PROJECT_ROOT}"

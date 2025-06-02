@@ -37,6 +37,7 @@
     "chat:dev": "# Build and run the chat app directly with dotenv for development"
   },
   "dependencies": {
+    "@langchain/langgraph": "0.2.74",
     "@langchain/anthropic": "^0.3.21",
     "@langchain/core": "^0.3.57",
     "@langchain/google-genai": "^0.2.9",

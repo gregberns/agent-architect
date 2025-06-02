@@ -102,6 +102,38 @@ type runConfig = {
   multitaskStrategy: option(string),
 };
 
+/* StateGraph and LangGraph types */
+type stateGraph;
+type messagesAnnotation;
+type memorySaver;
+
+type reactAgent;
+type workflow;
+type tool;
+type toolArray = array(tool);
+
+type reactAgentConfig = {
+  [@mel.as "llm"]
+  llm: model,
+  [@mel.as "tools"]
+  tools: toolArray,
+  [@mel.as "checkpointSaver"]
+  checkpointSaver: memorySaver,
+};
+
+type graphState = {
+  [@mel.as "messages"]
+  messages: array(humanMessage),
+};
+
+type invokeResult = {
+  [@mel.as "messages"]
+  messages: array(humanMessage),
+};
+
+type edgeCondition = graphState => string;
+type nodeFunction = graphState => Js.Promise.t(graphState);
+
 /* Raw bindings - all with apostrophe suffix */
 module Raw = {
   /* Message constructors - these are pure, no apostrophe needed */
@@ -151,6 +183,45 @@ module Raw = {
 
   [@mel.send]
   external joinRun': ('a, string, string) => Js.Promise.t(unit) = "join";
+
+  /* StateGraph bindings */
+  [@mel.module "@langchain/langgraph"] [@mel.new]
+  external createStateGraph: messagesAnnotation => stateGraph = "StateGraph";
+
+  [@mel.module "@langchain/langgraph"]
+  external messagesAnnotation: messagesAnnotation = "MessagesAnnotation";
+
+  [@mel.module "@langchain/langgraph"] [@mel.new]
+  external createMemorySaver: unit => memorySaver = "MemorySaver";
+
+  [@mel.module "@langchain/langgraph/prebuilt"]
+  external createReactAgent: reactAgentConfig => reactAgent =
+    "createReactAgent";
+
+  /* StateGraph methods - effectful, need apostrophe suffix */
+  [@mel.send]
+  external addNode': (stateGraph, string, nodeFunction) => stateGraph =
+    "addNode";
+
+  [@mel.send]
+  external addEdge': (stateGraph, string, string) => stateGraph = "addEdge";
+
+  [@mel.send]
+  external addConditionalEdges':
+    (stateGraph, string, edgeCondition) => stateGraph =
+    "addConditionalEdges";
+
+  [@mel.send] external compile': stateGraph => workflow = "compile";
+
+  [@mel.send]
+  external invokeWorkflow':
+    (workflow, graphState) => Js.Promise.t(invokeResult) =
+    "invoke";
+
+  [@mel.send]
+  external invokeReactAgent':
+    (reactAgent, graphState) => Js.Promise.t(invokeResult) =
+    "invoke";
 };
 
 /* Public API */
@@ -256,6 +327,47 @@ let joinRun =
     Raw.joinRun'(Raw.runs(client), threadId, runId)
   );
 
+/* StateGraph functions - pure constructors and IO-wrapped effectful operations */
+let createStateGraph = (): stateGraph =>
+  Raw.createStateGraph(Raw.messagesAnnotation);
+
+let createMemorySaver = (): memorySaver => Raw.createMemorySaver();
+
+let addNode =
+    (graph: stateGraph, ~name: string, ~nodeFunction: nodeFunction)
+    : stateGraph =>
+  Raw.addNode'(graph, name, nodeFunction);
+
+let addEdge = (graph: stateGraph, ~from: string, ~to_: string): stateGraph =>
+  Raw.addEdge'(graph, from, to_);
+
+let addConditionalEdges =
+    (graph: stateGraph, ~from: string, ~condition: edgeCondition): stateGraph =>
+  Raw.addConditionalEdges'(graph, from, condition);
+
+let compile = (graph: stateGraph): workflow => Raw.compile'(graph);
+
+let invokeWorkflow =
+    (workflow: workflow, state: graphState): IO.t(invokeResult, Js.Exn.t) =>
+  Utils.IOUtils.fromPromiseWithJsExn(() =>
+    Raw.invokeWorkflow'(workflow, state)
+  );
+
+let createReactAgent =
+    (~llm: model, ~tools: toolArray, ~checkpointSaver: memorySaver)
+    : reactAgent =>
+  Raw.createReactAgent({
+    llm,
+    tools,
+    checkpointSaver,
+  });
+
+let invokeReactAgent =
+    (agent: reactAgent, state: graphState): IO.t(invokeResult, Js.Exn.t) =>
+  Utils.IOUtils.fromPromiseWithJsExn(() =>
+    Raw.invokeReactAgent'(agent, state)
+  );
+
 /* Convenience function for creating message objects - pure function */
 let createMessageObject =
     (~role: messageRole, ~content: string): messageObject => {
@@ -283,5 +395,10 @@ let createMessages =
 
 /* Helper to create run input - pure function */
 let createRunInput = (messages: array(messageObject)): runInput => {
+  messages: messages,
+};
+
+/* Helper to create graph state - pure function */
+let createGraphState = (messages: array(humanMessage)): graphState => {
   messages: messages,
 };

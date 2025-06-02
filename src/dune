@@ -46,6 +46,8 @@
   modelTypes
   ; modelBindingsTest
   ; 
+  eval
+  ;
   effectsTest)
  ; (modules hello)
  (module_systems commonjs))

@@ -67,7 +67,7 @@ module Chat = (Model: ModelTypes.Model.MODEL, Emit: Emitter.EMITTER) => {
 //
 
 let googleApiKey =
-  Bindings.NodeJs.Process.getEnvWithDefault("GEMINI_API_KEY", "NOT VALID");
+  Bindings.NodeJs.Process.getEnvWithDefault("GOOGLE_API_KEY", "NOT VALID");
 
 let gemini_2_0_flash = "gemini-2.0-flash";
 

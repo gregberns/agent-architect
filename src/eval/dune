@@ -3,9 +3,9 @@
 (dirs :standard __tests__)
 
 (library
- (name exe)
+ (name eval)
  (modes melange)
- (libraries relude model bindings eval)
+ (libraries relude utils bindings model)
  (melange.compile_flags :standard -open Relude.Globals)
  (preprocess
   (pps melange.ppx)))

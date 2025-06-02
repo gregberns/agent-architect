@@ -10,11 +10,13 @@ open Relude.Globals;
  */
 module Fs = {
   // Raw external bindings
-  [@bs.module "fs"]
-  external readFileSync': (string, [@bs.string] [ | `utf8]) => string =
-    "readFileSync";
+  // [@bs.module "fs"]
+  // external readFileSync': (string, [@bs.string] [ | `utf8]) => string =
+  //   "readFileSync";
   let readFileSync = (path, encoding) =>
-    IO.triesJS(() => readFileSync'(path, encoding));
+    IO.triesJS(()
+      => Node.Fs.readFileSync(path, encoding));
+      // readFileSync'(path, encoding)
 
   [@bs.module "fs"]
   external readdir':
