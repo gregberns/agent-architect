@@ -9,3 +9,8 @@
  (melange.compile_flags :standard -open Relude.Globals)
  (preprocess
   (pps melange.ppx)))
+
+; (melange.emit
+;  (target test-process)
+;  (libraries exe)
+;  (modules TestProcess))

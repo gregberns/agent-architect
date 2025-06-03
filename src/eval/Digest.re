@@ -1,5 +1,4 @@
 open Relude.Globals;
-open Bindings.NodeJs;
 
 /**
  * Digest.re - Process evaluation tests through model inference
@@ -7,16 +6,20 @@ open Bindings.NodeJs;
  * Workflow:
  * 1. Read in a single test
  * 2. Map over prompt list
- * 3. Traverse over (send to Model)
- * 4. Encode test + response
+ * 3. Traverse over (send to Model k times per prompt)
+ * 4. Encode test + responses
  * 5. Write output to file
+ *
+ * Now supports running each prompt k times for evaluation consistency.
  */
 
-/* Types for digest processing */
+/* Re-export shared types for backward compatibility */
+type evaluationTask = Shared.evaluationTask;
+
+/* Types specific to digest processing */
 type promptTemplate = {
   name: string,
   template: string,
-  instructions: option(string),
 };
 
 type modelResponse = {
@@ -24,12 +27,21 @@ type modelResponse = {
   response: string,
   model_name: string,
   timestamp: float,
+  invocation_index: int // Which invocation this is (0 to k-1)
+};
+type promptResult = {
+  template_name: string,
+  template_hash: string, // Unique hash of the prompt template for identification
+  prompt: string,
+  responses: array(modelResponse), // All k responses for this prompt
+  total_invocations: int,
 };
 
 type digestResult = {
-  task: Ingest.evaluationTask,
-  responses: array(modelResponse),
+  task: evaluationTask,
+  prompt_results: array(promptResult), // Results for each prompt template
   processing_time: float,
+  total_invocations: int // Total number of model calls made
 };
 
 type digestError = [
@@ -39,6 +51,7 @@ type digestError = [
   | `EncodingError(string)
 ];
 
+/* Model integration setup */
 module Chat = (Model: ModelTypes.Model.MODEL) => {
   let init = () => Model.make();
 
@@ -48,7 +61,6 @@ module Chat = (Model: ModelTypes.Model.MODEL) => {
 
 let googleApiKey =
   Bindings.NodeJs.Process.getEnvWithDefault("GOOGLE_API_KEY", "NOT VALID");
-
 let gemini_2_0_flash = "gemini-2.0-flash";
 
 module LoadedGeminiModel =
@@ -60,9 +72,9 @@ module LoadedGeminiModel =
 
 module MyChat = Chat(LoadedGeminiModel);
 
-/* Stub model invoke function - to be replaced with actual model implementation */
+/* Model invoke function using loaded Gemini model */
 let invokeModel =
-    (~prompt: string, ~modelName as _: string): IO.t(string, string) => {
+    (~prompt: string, ~modelName as _: string): IO.t(string, string) =>
   MyChat.init()
   |> IO.flatMap(
        MyChat.sendMessage(
@@ -71,61 +83,45 @@ let invokeModel =
        ),
      )
   |> IO.map(({text}: ModelTypes.AIMessageChunk.t) => text)
-  |> IO.mapError(
-       Js.Exn.message
-       >> Option.getOrElse("<<MODEL INVOKE ERROR - NO MESSAGE>>"),
-     );
+  |> IO.mapError(Js.Exn.message >> Option.getOrElse("Unknown model error"));
+
+/* Generate a unique hash for a prompt template */
+let generateTemplateHash = (template: promptTemplate): string => {
+  // Simple hash based on template name and content
+  let content = template.name ++ ":" ++ template.template;
+
+  content |> Utils.StringUtils.simpleHash;
 };
 
 /* Default prompt templates for code evaluation */
 module PromptTemplates = {
   let basicCodeGeneration: promptTemplate = {
     name: "basic_code_generation",
-    template: "Problem: {text}\n\nGenerate ReasonML code to solve this problem:",
-    instructions:
-      Some(
-        "Generate clean, working ReasonML code that solves the given problem.",
-      ),
+    template: "You are an expert ReasonML programmer, and here is your task: {problem} Your ReasonML code should pass these tests:\n\n{tests}\n[BEGIN]\n{code}\n[DONE]",
   };
 
   let codeWithTests: promptTemplate = {
     name: "code_with_tests",
-    template: "Problem: {text}\n\nGenerate ReasonML code that passes these tests:\n{tests}\n\nCode:",
-    instructions:
-      Some("Generate ReasonML code that passes all the provided test cases."),
-  };
-
-  let codeExplanation: promptTemplate = {
-    name: "code_explanation",
-    template: "Problem: {text}\n\nExplain how to solve this problem step by step, then provide ReasonML code:",
-    instructions:
-      Some("First explain the approach, then provide working code."),
-  };
-
-  let codeOptimization: promptTemplate = {
-    name: "code_optimization",
-    template: "Problem: {text}\n\nProvide an optimized ReasonML solution with time/space complexity analysis:",
-    instructions:
-      Some("Focus on efficiency and provide complexity analysis."),
+    template: "You are learning ReasonML, and here is your task: {problem} Write ReasonML code to pass these tests:\n\n{tests}\n[BEGIN]\n{code}\n[DONE]",
   };
 
   let defaultTemplates: array(promptTemplate) = [|
     basicCodeGeneration,
     codeWithTests,
-    codeExplanation,
-    codeOptimization,
   |];
 };
 
 /* Generate prompt from template and task */
 let generatePrompt =
-    (template: promptTemplate, task: Ingest.evaluationTask)
+    (template: promptTemplate, task: evaluationTask)
     : Result.t(string, string) => {
-  let templateStr = template.template;
-
-  // Replace {text} placeholder
+  // Replace {problem} placeholder
   let withText =
-    String.replaceEach(~search="{text}", ~replaceWith=task.text, templateStr);
+    String.replaceEach(
+      ~search="{problem}",
+      ~replaceWith=task.text,
+      template.template,
+    );
 
   // Replace {tests} placeholder if present
   let testsStr = Array.String.intercalate("\n", task.test_list);
@@ -139,58 +135,83 @@ let generatePrompt =
   Result.Ok(withCode);
 };
 
-/* Process single test with one prompt template */
-let processTestWithPrompt =
-    (task: Ingest.evaluationTask, template: promptTemplate, modelName: string)
-    : IO.t(modelResponse, digestError) => {
-  // let startTime = Js.Date.now();
+/* Process single prompt k times */
+let processPromptKTimes =
+    (
+      task: evaluationTask,
+      template: promptTemplate,
+      modelName: string,
+      k: int,
+    )
+    : IO.t(promptResult, digestError) => {
   switch (generatePrompt(template, task)) {
   | Result.Ok(prompt) =>
-    invokeModel(~prompt, ~modelName)
-    |> IO.mapError(error => `ModelInvokeError(error))
-    |> IO.map(response => {
+    // Create a list of invocation indices [0, 1, 2, ..., k-1]
+    let invocationIndices = Int.rangeAsList(0, k);
+
+    List.IO.traverse(
+      invocationIndex => {
+        invokeModel(~prompt, ~modelName)
+        |> IO.mapError(error => `ModelInvokeError(error))
+        |> IO.map(response => {
+             {
+               prompt,
+               response,
+               model_name: modelName,
+               timestamp: Js.Date.now(),
+               invocation_index: invocationIndex,
+             }
+           })
+      },
+      invocationIndices,
+    )
+    |> IO.map(responseList => {
+         let responses = Array.fromList(responseList);
          {
+           template_name: template.name,
+           template_hash: generateTemplateHash(template),
            prompt,
-           response,
-           model_name: modelName,
-           timestamp: Js.Date.now(),
-         }
-       })
+           responses,
+           total_invocations: k,
+         };
+       });
   | Result.Error(error) => IO.throw(`PromptGenerationError(error))
   };
 };
 
-/* Process single test with multiple prompt templates */
-let processSingleTest =
+/* Process single test with multiple prompt templates, each run k times */
+let processSingleTestWithK =
     (
-      task: Ingest.evaluationTask,
+      task: evaluationTask,
       prompts: array(promptTemplate),
       modelName: string,
+      promptIterations: int,
     )
     : IO.t(digestResult, digestError) => {
   let startTime = Js.Date.now();
 
   // Map over prompt list and traverse over IO operations
   List.IO.traverse(
-    template => processTestWithPrompt(task, template, modelName),
+    template =>
+      processPromptKTimes(task, template, modelName, promptIterations),
     Array.toList(prompts),
   )
-  |> IO.map(responseList => {
-       let responses = Array.fromList(responseList);
+  |> IO.map(promptResultList => {
+       let prompt_results = Array.fromList(promptResultList);
        let processingTime = Js.Date.now() -. startTime;
+       let totalInvocations = Array.length(prompts) * promptIterations;
 
        {
          task,
-         responses,
+         prompt_results,
          processing_time: processingTime,
+         total_invocations: totalInvocations,
        };
      });
 };
 
-/* Encode digest result to JSON */
+/* Encode digest result to JSON using shared encoder for evaluation task */
 module EncodeDigest = {
-  // open Utils.JsonUtils;
-
   let encodeModelResponse = (response: modelResponse): Js.Json.t => {
     Js.Json.object_(
       Js.Dict.fromList([
@@ -198,91 +219,104 @@ module EncodeDigest = {
         ("response", Js.Json.string(response.response)),
         ("model_name", Js.Json.string(response.model_name)),
         ("timestamp", Js.Json.number(response.timestamp)),
+        (
+          "invocation_index",
+          Js.Json.number(Float.fromInt(response.invocation_index)),
+        ),
       ]),
     );
   };
 
-  let encodeEvaluationTask = (task: Ingest.evaluationTask): Js.Json.t => {
+  let encodePromptResult = (promptResult: promptResult): Js.Json.t => {
     Js.Json.object_(
       Js.Dict.fromList([
-        ("text", Js.Json.string(task.text)),
-        ("code", Js.Json.string(task.code)),
-        ("task_id", Js.Json.number(Float.fromInt(task.task_id))),
-        ("test_setup_code", Js.Json.string(task.test_setup_code)),
+        ("template_name", Js.Json.string(promptResult.template_name)),
+        ("template_hash", Js.Json.string(promptResult.template_hash)),
+        ("prompt", Js.Json.string(promptResult.prompt)),
         (
-          "test_list",
-          Js.Json.array(Array.map(Js.Json.string, task.test_list)),
+          "responses",
+          Js.Json.array(
+            Array.map(encodeModelResponse, promptResult.responses),
+          ),
         ),
         (
-          "challenge_test_list",
-          Js.Json.array(Array.map(Js.Json.string, task.challenge_test_list)),
+          "total_invocations",
+          Js.Json.number(Float.fromInt(promptResult.total_invocations)),
         ),
       ]),
     );
   };
+
+  // Use shared encoder for evaluation task
+  let encodeEvaluationTask = Shared.Encode.evaluationTask;
 
   let encodeDigestResult = (result: digestResult): Js.Json.t => {
     Js.Json.object_(
       Js.Dict.fromList([
         ("task", encodeEvaluationTask(result.task)),
         (
-          "responses",
-          Js.Json.array(Array.map(encodeModelResponse, result.responses)),
+          "prompt_results",
+          Js.Json.array(
+            Array.map(encodePromptResult, result.prompt_results),
+          ),
         ),
         ("processing_time", Js.Json.number(result.processing_time)),
+        (
+          "total_invocations",
+          Js.Json.number(Float.fromInt(result.total_invocations)),
+        ),
         ("processed_at", Js.Json.number(Js.Date.now())),
       ]),
     );
   };
 };
 
-/* Write digest result to file */
+/* Write digest result to file using shared JSONL operations */
 let writeDigestResult =
     (result: digestResult, outputPath: string): IO.t(unit, digestError) => {
   let jsonContent = EncodeDigest.encodeDigestResult(result);
-  let jsonString = Js.Json.stringify(jsonContent);
-
-  Fs.readFileSync(outputPath, `utf8)
-  |> IO.catchError(_ => IO.pure(""))  // File doesn't exist, start with empty
-  |> IO.flatMap(existingContent => {
-       // Append to JSONL format
-       let newLine =
-         if (String.trim(existingContent) == "") {
-           jsonString;
-         } else {
-           existingContent ++ "\n" ++ jsonString;
-         };
-
-       // Write back to file
-       IO.triesJS(() => {Node.Fs.writeFileAsUtf8Sync(outputPath, newLine)})
-       |> IO.mapError(error => `FileWriteError(error));
+  Shared.JsonlOps.appendJsonToJsonl(outputPath, jsonContent)
+  |> IO.mapError(error => {
+       switch (error) {
+       | `FileWriteError(jsError) => `FileWriteError(jsError)
+       | `FileReadError(jsError) => `FileWriteError(jsError) // Convert read error to write error for consistency
+       }
      });
 };
 
-/* Main digest processing function */
+/* Main digest processing function with k parameter */
 let digestSingleTest =
     (
       ~prompts: array(promptTemplate)=PromptTemplates.defaultTemplates,
       ~modelName: string,
       ~outputPath: string,
-      task: Ingest.evaluationTask,
+      ~promptIterations: int=1, // Number of times to run each prompt
+      task: evaluationTask,
       (),
     )
     : IO.t(digestResult, digestError) => {
-  processSingleTest(task, prompts, modelName)
+  Js.log(
+    "    #### Task: "
+    ++ (task.task_id |> Int.toString)
+    ++ " (k="
+    ++ (promptIterations |> Int.toString)
+    ++ ")",
+  );
+  processSingleTestWithK(task, prompts, modelName, promptIterations)
   |> IO.flatMap(result => {
        writeDigestResult(result, outputPath) |> IO.map(_ => result)
      });
 };
 
-/* Batch processing functions */
+/* Batch processing functions with k parameter */
 let digestMultipleTests =
     (
       ~prompts: array(promptTemplate)=PromptTemplates.defaultTemplates,
       ~modelName: string,
       ~outputPath: string,
       ~batchSize: int=5,
-      tasks: array(Ingest.evaluationTask),
+      ~promptIterations: int=1, // Number of times to run each prompt
+      tasks: array(evaluationTask),
       (),
     )
     : IO.t(array(digestResult), digestError) => {
@@ -292,7 +326,15 @@ let digestMultipleTests =
   List.IO.traverse(
     batch => {
       List.IO.traverse(
-        task => digestSingleTest(~prompts, ~modelName, ~outputPath, task, ()),
+        task =>
+          digestSingleTest(
+            ~prompts,
+            ~modelName,
+            ~outputPath,
+            ~promptIterations,
+            task,
+            (),
+          ),
         Array.toList(batch),
       )
     },
@@ -301,14 +343,28 @@ let digestMultipleTests =
   |> IO.map(batchResults => {batchResults |> List.flatten |> Array.fromList});
 };
 
-/* Utility functions */
+/* Utility functions using shared implementations */
 module DigestUtils = {
   let loadAndDigestJsonl =
-      (~modelName: string, ~inputPath: string, ~outputPath: string)
+      (
+        ~modelName: string,
+        ~inputPath: string,
+        ~outputPath: string,
+        ~promptIterations: int=1,
+        (),
+      ) // Number of times to run each prompt
       : IO.t(array(digestResult), string) => {
-    Ingest.loadEvaluationDataset(inputPath)
+    // Use shared function to load evaluation dataset
+    Shared.loadEvaluationDataset(inputPath)
+    |> IO.tap(_ => Js.log("############ Loaded Data"))
     |> IO.flatMap(tasks => {
-         digestMultipleTests(~modelName, ~outputPath, tasks, ())
+         digestMultipleTests(
+           ~modelName,
+           ~outputPath,
+           ~promptIterations,
+           tasks,
+           (),
+         )
          |> IO.mapError(error => {
               switch (error) {
               | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
@@ -327,13 +383,29 @@ module DigestUtils = {
   };
 
   let digestSingleTaskById =
-      (~modelName, ~inputPath: string, ~taskId: int, ~outputPath: string)
+      (
+        ~modelName,
+        ~inputPath: string,
+        ~taskId: int,
+        ~outputPath: string,
+        ~promptIterations: int=1,
+        (),
+      ) // Number of times to run each prompt
       : IO.t(option(digestResult), string) => {
-    Ingest.loadEvaluationDataset(inputPath)
+    // Use shared function to load evaluation dataset
+    Shared.loadEvaluationDataset(inputPath)
+    |> IO.tap(_ => Js.log("############ Loaded Data"))
     |> IO.flatMap(tasks => {
-         switch (Ingest.TaskUtils.getTaskById(tasks, taskId)) {
+         // Use shared TaskUtils to find task by ID
+         switch (Shared.TaskUtils.getTaskById(tasks, taskId)) {
          | Some(task) =>
-           digestSingleTest(~modelName, ~outputPath, task, ())
+           digestSingleTest(
+             ~modelName,
+             ~outputPath,
+             ~promptIterations,
+             task,
+             (),
+           )
            |> IO.map(result => Some(result))
            |> IO.mapError(error => {
                 switch (error) {
@@ -353,4 +425,45 @@ module DigestUtils = {
          }
        });
   };
+
+  /* Analysis functions for k-repeated prompts */
+  let analyzePromptConsistency = (promptResult: promptResult): float => {
+    // Calculate response consistency by comparing responses
+    // For now, simple metric: ratio of unique responses to total responses
+    let responses =
+      Array.map(response => response.response, promptResult.responses);
+    let uniqueResponses = String.Set.fromArray(responses) |> Set.length;
+    Float.fromInt(uniqueResponses) /. Float.fromInt(Array.length(responses));
+  };
+
+  let getAverageResponseLength = (promptResult: promptResult): float => {
+    let totalLength =
+      Array.foldLeft(
+        (acc, response) => acc + String.length(response.response),
+        0,
+        promptResult.responses,
+      );
+    Float.fromInt(totalLength)
+    /. Float.fromInt(Array.length(promptResult.responses));
+  };
+
+  let getBestResponse =
+      (promptResult: promptResult, ~scorer: string => float)
+      : option(modelResponse) => {
+    // Find the response with the highest score according to the scorer function
+    Array.maxBy(
+      (response1, response2) =>
+        Float.Ord.compare(
+          scorer(response1.response),
+          scorer(response2.response),
+        ),
+      promptResult.responses,
+    );
+  };
 };
+
+/* Convenience functions for common k values */
+let digestSingleTestOnce = digestSingleTest(~promptIterations=1);
+let digestSingleTestThrice = digestSingleTest(~promptIterations=3);
+let digestSingleTestFiveTimes = digestSingleTest(~promptIterations=5);
+let digestSingleTestTenTimes = digestSingleTest(~promptIterations=10);

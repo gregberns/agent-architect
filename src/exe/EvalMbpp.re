@@ -2,19 +2,26 @@ open Eval.Digest.DigestUtils;
 
 let inputPath = "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/mbpp.jsonl";
 
-let outputPath = "/Users/gb/github/ai-experiments/agent-architect/data/eval_output/test1.txt";
+let outputPath = "/Users/gb/github/ai-experiments/agent-architect/data/eval_output/test1.json";
 
 let taskId = 601;
 
-Js.log("####### START #######");
+let promptIterations = 2;
+
 let run = () => {
   Js.log("####### START #######");
 
-  digestSingleTaskById(~modelName="", ~inputPath, ~taskId, ~outputPath)
-  |> IO.tap(r => Js.log2("OUTPUT", r))
+  digestSingleTaskById(
+    ~modelName="",
+    ~inputPath,
+    ~taskId,
+    ~outputPath,
+    ~promptIterations,
+    (),
+  )
   |> IO.unsafeRunAsync(
        fun
-       | Result.Ok(r) => Js.log2("####### OK #######", r)
+       | Result.Ok(_r) => Js.log("####### OK #######")
        | Error(err) => Js.log2("####### ERROR #######", err),
      );
 };
