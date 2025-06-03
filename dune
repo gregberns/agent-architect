@@ -11,3 +11,8 @@
 ;; - add a `(subdir node_modules (dirs only_your_package))`
 
 (dirs :standard \ node_modules)
+
+(melange.emit
+ (target test_process)
+ (libraries relude eval bindings utils)
+ (modules test_process))

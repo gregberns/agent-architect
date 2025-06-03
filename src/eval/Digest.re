@@ -14,7 +14,7 @@ open Relude.Globals;
  */
 
 /* Re-export shared types for backward compatibility */
-type evaluationTask = Shared.evaluationTask;
+type evaluationTask = Shared.EvaluationTask.t;
 
 /* Types specific to digest processing */
 type promptTemplate = {
@@ -248,12 +248,12 @@ module EncodeDigest = {
   };
 
   // Use shared encoder for evaluation task
-  let encodeEvaluationTask = Shared.Encode.evaluationTask;
+  // let encodeEvaluationTask = Shared.EvaluationTask.encode;
 
   let encodeDigestResult = (result: digestResult): Js.Json.t => {
     Js.Json.object_(
       Js.Dict.fromList([
-        ("task", encodeEvaluationTask(result.task)),
+        ("task", Shared.EvaluationTask.encode(result.task)),
         (
           "prompt_results",
           Js.Json.array(
@@ -397,7 +397,7 @@ module DigestUtils = {
     |> IO.tap(_ => Js.log("############ Loaded Data"))
     |> IO.flatMap(tasks => {
          // Use shared TaskUtils to find task by ID
-         switch (Shared.TaskUtils.getTaskById(tasks, taskId)) {
+         switch (Shared.EvaluationTask.getTaskById(tasks, taskId)) {
          | Some(task) =>
            digestSingleTest(
              ~modelName,

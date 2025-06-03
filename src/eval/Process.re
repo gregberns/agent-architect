@@ -14,104 +14,58 @@ open Relude.Globals;
  * - Generate error reports
  */
 
-/* Types for processing digest files */
-type extractedCode = {
-  content: string,
-  task_id: int,
-  template_name: string,
-  template_hash: string,
-  invocation_index: int,
-  response_index: int, // Which response from the k responses
-  file_path: string,
-};
-
-type extractionResult = {
-  extracted_files: array(extractedCode),
-  total_files: int,
-  processing_time: float,
-};
-
-type compilationResult = {
-  file_path: string,
-  success: bool,
-  errors: array(string),
-  warnings: array(string),
-};
-
-type processError = [
-  | `FileReadError(Js.Exn.t)
-  | `FileWriteError(Js.Exn.t)
-  | `JsonParseError(string)
-  | `CodeExtractionError(string)
-  | `CompilationError(string)
-  | `DirectoryCreationError(Js.Exn.t)
-];
-
-/* Decoder for digest result from Digest.re */
-module DecodeDigest = {
-  open Utils.JsonUtils.Decode;
-
-  /* Decoder for the current format in test1.json */
-  type currentFormatResponse = {
-    prompt: string,
-    response: string,
-    model_name: string,
-    timestamp: float,
-  };
-
-  let currentFormatResponse: t(currentFormatResponse) = {
-    let+ prompt = field("prompt", string)
-    and+ response = field("response", string)
-    and+ model_name = field("model_name", string)
-    and+ timestamp = field("timestamp", floatFromNumber);
-    {
-      prompt,
-      response,
-      model_name,
-      timestamp,
-    };
-  };
-
-  module FormatDigest = {
-    type t = {
-      task: Shared.evaluationTask,
-      prompt_results: array(currentFormatResponse),
-      processing_time: float,
-      processed_at: float,
-    };
-
-    let decode: Utils.JsonUtils.Decode.t(t) = {
-      let+ task = field("task", Shared.Decode.evaluationTask)
-      and+ prompt_results =
-        field("prompt_results", array(currentFormatResponse))
-      and+ processing_time = field("processing_time", floatFromNumber)
-      and+ processed_at = field("processed_at", floatFromNumber);
-      {
-        task,
-        prompt_results,
-        processing_time,
-        processed_at,
-      };
-    };
-  };
-};
+/* Type aliases for convenience */
+type extractedCode = Shared.ExtractedCode.t;
+type extractionResult = Shared.ExtractionResult.t;
+type compilationResult = Shared.CompilationResult.t;
+type processError = Shared.processError;
 
 /* Code extraction utilities */
 module CodeExtraction = {
+  // let betweenMarkers = (~beginMarker, ~endMarker, str) =>
+  //   Option.map2(
+  //     (begin_, end_) =>
+  //       String.slice(begin_ + String.length(beginMarker), end_, str),
+  //     String.indexOf(~search=beginMarker, str),
+  //     String.indexOf(~search=endMarker, str),
+  //   )
+  //   |> Option.getOrElse(str);
+  // ;
+  let betweenMarkers = (~beginMarker, ~endMarker, str) => {
+    String.indexOf(~search=beginMarker, str)
+    // Add the beginMarker spacing
+    |> Option.map(i => i + String.length(beginMarker))
+    |> Option.map(String.splitAt(_, str))
+    |> Option.flatMap(((_, afterBeginMarker)) =>
+         String.indexOf(~search=endMarker, afterBeginMarker)
+         |> Option.map(String.splitAt(_, afterBeginMarker))
+         |> Option.map(((beforeEndMarker, _)) => beforeEndMarker)
+       )
+    |> Option.getOrElse(str)//   (String.indexOf(~search=beginMarker, str) |> Option.getOrElse(0))
+                             //   + String.length(beginMarker),
+                             //   String.indexOf(~search=endMarker, str)
+                             //   |> Option.getOrElse(String.length(str) - 1),
+                             //   str,
+                             ; // String.slice(
+                             // );
+  };
+
   /* Extract ReasonML code from response text */
-  let extractReasonMLCode = (response: string): option(string) => {
-    // Look for code between [BEGIN] and [DONE] markers
+  let extractReasonMLCode = (response: string): string => {
+    // First, try to find code between [BEGIN] and [DONE] markers
     // let beginMarker = "[BEGIN]";
     // let endMarker = "[DONE]";
+    let reasonmlBlock = "```reasonml";
+    // let reasonBlock = "```reason";
+    let genericBlock = "```";
     response
-    // String.slice(
-    //   String.indexOf(~search=beginMarker, response) |> Option.getOrElse(0),
-    //   String.indexOf(~search=endMarker, response)
-    //   |> Option.getOrElse(response |> String.length),
-    //   response,
-    // )
-    // |> String.trim
-    |> Option.pure;
+    // |> betweenMarkers(~beginMarker, ~endMarker)
+    |> betweenMarkers(~beginMarker=reasonmlBlock, ~endMarker=genericBlock)
+    // |> betweenMarkers(~beginMarker=reasonBlock, ~endMarker=genericBlock)
+    // This will be probematic
+    // |> betweenMarkers(~beginMarker=genericBlock, ~endMarker=genericBlock)
+    |> String.trim;
+    // If no [BEGIN]/[DONE] markers, try to extract from markdown code blocks
   };
 
   /* Generate file path for extracted code */
@@ -158,79 +112,83 @@ module CodeExtraction = {
 
 /* File processing functions */
 module FileProcessing = {
-  /* Read and parse digest file (single JSON object format) */
+  /* Read and parse digest file */
   let readDigestFile =
-      (filePath: string): IO.t(DecodeDigest.FormatDigest.t, processError) => {
+      (filePath: string): IO.t(Shared.DigestResult.t, processError) => {
     Shared.FileOps.readFileContents(filePath)
     |> IO.mapError(error => `FileReadError(error))
     |> IO.flatMap(content => {
          switch (Utils.JsonUtils.parseSafe(content)) {
          | Some(json) =>
-           switch (DecodeDigest.FormatDigest.decode(json)) {
-           | Result.Ok(digestResult) => IO.pure(digestResult)
-           | Result.Error(e) =>
-             IO.throw(
-               `JsonParseError(
-                 "Failed to decode digest result"
-                 ++ (e |> BsDecode.Decode_ParseError.failureToDebugString),
-               ),
-             )
-           }
+           let decoded = Shared.DigestResult.decode(json);
+
+           decoded
+           |> Result.fold(
+                e =>
+                  IO.throw(
+                    `JsonParseError((
+                      "Failed to decode digest result: "
+                      ++ (e |> BsDecode.Decode_ParseError.failureToDebugString),
+                      "",
+                    )),
+                  ),
+                digestResult => IO.pure(digestResult),
+              );
          | None =>
-           IO.throw(`JsonParseError("Invalid JSON in file: " ++ filePath))
+           IO.throw(
+             `JsonParseError(("Invalid JSON in file: " ++ filePath, "")),
+           )
          }
        });
   };
-  /* Extract code from current format digest result */
+
+  /* Extract code from digest result */
   let extractAllCode =
-      (~baseDir, {prompt_results, task, _}: DecodeDigest.FormatDigest.t)
-      : IO.t(extractionResult, processError) => {
+      (~baseDir, {prompt_results, task, _}: Shared.DigestResult.t)
+      : extractionResult => {
     let startTime = Js.Date.now();
-    let extractedFiles = ref([]);
 
-    prompt_results
-    |> Array.forEachWithIndex(
-         (
-           {response, prompt, _}: DecodeDigest.currentFormatResponse,
-           responseIndex,
-         ) => {
-         switch (CodeExtraction.extractReasonMLCode(response)) {
-         | Some(code) =>
-           /* Generate a simple hash from the prompt for file naming */
-           let promptHash = prompt |> Utils.StringUtils.simpleHash;
+    let finalExtractedFiles =
+      prompt_results
+      |> Array.mapWithIndex(
+           (promptResult: Shared.PromptResult.t, _promptIndex) =>
+           promptResult.responses
+           |> Array.mapWithIndex(
+                (response: Shared.ModelResponse.t, responseIndex): Shared.ExtractedCode.t =>
+                CodeExtraction.extractReasonMLCode(response.response)
+                |> (
+                  (code) => (
+                    {
+                      {
+                        content: code,
+                        task_id: task.task_id,
+                        template_name: promptResult.template_name,
+                        template_hash: promptResult.template_hash,
+                        invocation_index:
+                          response.invocation_index |> Option.getOrElse(0),
+                        response_index: responseIndex,
+                        file_path:
+                          CodeExtraction.generateFilePath(
+                            ~baseDir,
+                            ~taskId=task.task_id,
+                            ~templateHash=promptResult.template_hash,
+                            ~invocationIndex=
+                              response.invocation_index |> Option.getOrElse(0),
+                            ~responseIndex,
+                          ),
+                      };
+                    }: Shared.ExtractedCode.t
+                  )
+                )
+              )
+         )
+      |> Array.flatten;
 
-           let filePath =
-             CodeExtraction.generateFilePath(
-               ~baseDir,
-               ~taskId=task.task_id,
-               ~templateHash=promptHash,
-               ~invocationIndex=0, // Default since current format doesn't have invocation index
-               ~responseIndex,
-             );
-
-           let extractedCode = {
-             content: code,
-             task_id: task.task_id,
-             template_name: "prompt_" ++ string_of_int(responseIndex), // Simple template name
-             template_hash: promptHash,
-             invocation_index: 0,
-             response_index: responseIndex,
-             file_path: filePath,
-           };
-
-           extractedFiles := [extractedCode, ...extractedFiles^];
-         | None => () // Skip responses without extractable code
-         }
-       });
-
-    let finalExtractedFiles = Array.fromList(List.reverse(extractedFiles^));
-    let processingTime = Js.Date.now() -. startTime;
-
-    IO.pure({
+    {
       extracted_files: finalExtractedFiles,
       total_files: Array.length(finalExtractedFiles),
-      processing_time: processingTime,
-    });
+      processing_time: Js.Date.now() -. startTime,
+    };
   };
 
   /* Write all extracted files to disk */
@@ -320,12 +278,14 @@ let () = print_endline("Compilation test completed");
                 );
 
               [|
-                {
-                  file_path: outputDir,
-                  success: List.length(errors) == 0,
-                  errors: Array.fromList(errors),
-                  warnings: Array.fromList(warnings),
-                },
+                (
+                  {
+                    file_path: outputDir,
+                    success: List.length(errors) == 0,
+                    errors: Array.fromList(errors),
+                    warnings: Array.fromList(warnings),
+                  }: compilationResult
+                ),
               |];
             })
        });
@@ -339,26 +299,23 @@ let processDigestFile =
   Js.log("Reading digest file: " ++ digestFilePath);
 
   FileProcessing.readDigestFile(digestFilePath)
-  |> IO.flatMap((digestResult: DecodeDigest.FormatDigest.t) => {
+  |> IO.flatMap((digestResult: Shared.DigestResult.t) => {
        Js.log(
          "Found digest result for task "
          ++ string_of_int(digestResult.task.task_id),
        );
 
        FileProcessing.extractAllCode(~baseDir=outputDir, digestResult)
-       |> IO.flatMap(extractionResult => {
-            Js.log(
-              Printf.sprintf(
-                "Extracted %d code files",
-                extractionResult.total_files,
-              ),
-            );
+       |> (
+         (
+           {total_files, extracted_files, _} as extractionResult: extractionResult,
+         ) => {
+           Js.log(Printf.sprintf("Extracted %d code files", total_files));
 
-            FileProcessing.writeExtractedFiles(
-              extractionResult.extracted_files,
-            )
-            |> IO.map(_ => extractionResult);
-          });
+           FileProcessing.writeExtractedFiles(extracted_files)
+           |> IO.map(_ => extractionResult);
+         }
+       );
      });
 };
 
@@ -380,20 +337,5 @@ let processAndCompile =
 
 /* Error handling utilities */
 module ErrorUtils = {
-  let processErrorToString = (error: processError): string => {
-    switch (error) {
-    | `FileReadError(jsError) =>
-      "File read error: "
-      ++ (Js.Exn.message(jsError) |> Option.getOrElse("<<NO MESSAGE>>"))
-    | `FileWriteError(jsError) =>
-      "File write error: "
-      ++ (Js.Exn.message(jsError) |> Option.getOrElse("<<NO MESSAGE>>"))
-    | `JsonParseError(msg) => "JSON parse error: " ++ msg
-    | `CodeExtractionError(msg) => "Code extraction error: " ++ msg
-    | `CompilationError(msg) => "Compilation error: " ++ msg
-    | `DirectoryCreationError(jsError) =>
-      "Directory creation error: "
-      ++ (Js.Exn.message(jsError) |> Option.getOrElse("<<NO MESSAGE>>"))
-    };
-  };
+  let processErrorToString = Shared.ErrorUtils.processErrorToString;
 };
