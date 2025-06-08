@@ -323,25 +323,53 @@ module ExtractionResult = {
 /* Compilation result module */
 module CompilationResult = {
   type t = {
+    extractedCode: ExtractedCode.t,
     file_path: string,
-    success: bool,
-    errors: array(string),
-    warnings: array(string),
+    runtimeError: list(string),
+    parseError: list(string),
+    compileError: list(string),
+    testError: list(string),
+    codeStyle: list(string),
   };
+
+  let make =
+      (
+        ~extractedCode,
+        ~file_path,
+        ~runtimeError=[],
+        ~parseError=[],
+        ~compileError=[],
+        ~testError=[],
+        ~codeStyle=[],
+        (),
+      ) => {
+    extractedCode,
+    file_path,
+    runtimeError,
+    parseError,
+    compileError,
+    testError,
+    codeStyle,
+  };
+
+  let encodeStringList = value =>
+    Js.Json.array(List.map(Js.Json.string, value) |> List.toArray);
 
   let encode = (result: t): Js.Json.t => {
     Js.Json.object_(
       Js.Dict.fromList([
-        ("file_path", Js.Json.string(result.file_path)),
-        ("success", Js.Json.boolean(result.success)),
-        ("errors", Js.Json.array(Array.map(Js.Json.string, result.errors))),
-        (
-          "warnings",
-          Js.Json.array(Array.map(Js.Json.string, result.warnings)),
-        ),
+        ("extractedCode", ExtractedCode.encode(result.extractedCode)),
+        ("filePath", Js.Json.string(result.file_path)),
+        ("runtimeError", result.runtimeError |> encodeStringList),
+        ("parseError", result.parseError |> encodeStringList),
+        ("compileError", result.compileError |> encodeStringList),
+        ("testError", result.testError |> encodeStringList),
+        ("codeStyle", result.codeStyle |> encodeStringList),
       ]),
     );
   };
+
+  let encodeArray = arr => Js.Json.array(Array.map(encode, arr));
 };
 
 /* Common error types for file and JSON operations */
@@ -483,13 +511,7 @@ module JsonlOps = {
       (filePath: string, tasks: array(EvaluationTask.t))
       : IO.t(unit, fileError) => {
     let jsonLines =
-      Array.map(
-        task => {
-          let json = EvaluationTask.encode(task);
-          Js.Json.stringify(json);
-        },
-        tasks,
-      );
+      Array.map(EvaluationTask.encode >> Js.Json.stringify, tasks);
 
     let content = Array.String.intercalate("\n", jsonLines);
     FileOps.writeFileContents(filePath, content)

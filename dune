@@ -14,5 +14,23 @@
 
 (melange.emit
  (target test_process)
- (libraries relude eval bindings utils)
- (modules test_process))
+ (libraries relude eval bindings utils))
+
+; --display-separate-messages
+;            Separate error messages with a blank line.
+
+; --build-dir=FILE (absent DUNE_BUILD_DIR env)
+;            Specified build directory. _build if unspecified
+
+; --display=MODE
+;            Control the display mode of Dune. See dune-config(5) for more
+;            details. Valid values for this option are progress, verbose, short,
+;            quiet or tui.
+
+; --root=DIR
+;            Use this directory as workspace root instead of guessing it. Note
+;            that this option doesn't change the interpretation of targets given
+;            on the command line. It is only intended for scripts.
+
+; DUNE_BUILD_DIR
+;            Specified build directory. _build if unspecified

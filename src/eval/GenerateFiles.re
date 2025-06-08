@@ -15,22 +15,12 @@ open Relude.Globals;
  */
 
 /* Type aliases for convenience */
-type extractedCode = Shared.ExtractedCode.t;
 type extractionResult = Shared.ExtractionResult.t;
 type compilationResult = Shared.CompilationResult.t;
 type processError = Shared.processError;
 
 /* Code extraction utilities */
 module CodeExtraction = {
-  // let betweenMarkers = (~beginMarker, ~endMarker, str) =>
-  //   Option.map2(
-  //     (begin_, end_) =>
-  //       String.slice(begin_ + String.length(beginMarker), end_, str),
-  //     String.indexOf(~search=beginMarker, str),
-  //     String.indexOf(~search=endMarker, str),
-  //   )
-  //   |> Option.getOrElse(str);
-  // ;
   let betweenMarkers = (~beginMarker, ~endMarker, str) => {
     String.indexOf(~search=beginMarker, str)
     // Add the beginMarker spacing
@@ -41,13 +31,7 @@ module CodeExtraction = {
          |> Option.map(String.splitAt(_, afterBeginMarker))
          |> Option.map(((beforeEndMarker, _)) => beforeEndMarker)
        )
-    |> Option.getOrElse(str)//   (String.indexOf(~search=beginMarker, str) |> Option.getOrElse(0))
-                             //   + String.length(beginMarker),
-                             //   String.indexOf(~search=endMarker, str)
-                             //   |> Option.getOrElse(String.length(str) - 1),
-                             //   str,
-                             ; // String.slice(
-                             // );
+    |> Option.getOrElse(str);
   };
 
   /* Extract ReasonML code from response text */
@@ -81,7 +65,7 @@ module CodeExtraction = {
     let taskDir = Printf.sprintf("%s/task_%d", baseDir, taskId);
     let filename =
       Printf.sprintf(
-        "%s_%d_%d.re",
+        "T_%s_%d_%d.re",
         templateHash,
         invocationIndex,
         responseIndex,
@@ -193,102 +177,14 @@ module FileProcessing = {
 
   /* Write all extracted files to disk */
   let writeExtractedFiles =
-      (extractedFiles: array(extractedCode)): IO.t(unit, processError) => {
+      (extractedFiles: array(Shared.ExtractedCode.t))
+      : IO.t(unit, processError) => {
     Array.IO.traverse(
-      ({file_path, content, _}: extractedCode) =>
+      ({file_path, content, _}: Shared.ExtractedCode.t) =>
         CodeExtraction.writeCodeToFile(file_path, content),
       extractedFiles,
     )
     |> IO.map(_ => ());
-  };
-};
-
-/* Compilation checking */
-module CompilationCheck = {
-  /* Create a dune file for compilation testing */
-  let createDuneFile = (outputDir: string): IO.t(unit, processError) => {
-    let duneContent = {|
-(executable
- (public_name eval_test)
- (name main)
- (libraries relude melange.js melange.dom melange.node))
-
-(rule
- (target compilation_report.txt)
- (deps (glob_files *.re))
- (action
-  (with-outputs-to %{target}
-   (system "dune build --profile dev 2>&1 || true"))))
-|};
-
-    let dunePath = Printf.sprintf("%s/dune", outputDir);
-    CodeExtraction.writeCodeToFile(dunePath, duneContent);
-  };
-
-  /* Create a minimal main.re file */
-  let createMainFile = (outputDir: string): IO.t(unit, processError) => {
-    let mainContent = {|
-(* Main file for compilation testing *)
-let () = print_endline("Compilation test completed");
-|};
-
-    let mainPath = Printf.sprintf("%s/main.re", outputDir);
-    CodeExtraction.writeCodeToFile(mainPath, mainContent);
-  };
-
-  /* Run compilation and collect errors */
-  let compileFiles =
-      (outputDir: string): IO.t(array(compilationResult), processError) => {
-    createDuneFile(outputDir)
-    |> IO.flatMap(_ => createMainFile(outputDir))
-    |> IO.flatMap(_ => {
-         IO.triesJS(() => {
-           // Run dune build in the output directory
-           let buildCommand =
-             Printf.sprintf(
-               "cd %s && dune build --profile dev 2>&1",
-               outputDir,
-             );
-           let output =
-             Node.Child_process.execSync(
-               buildCommand,
-               Node.Child_process.option(),
-             );
-           //  Js.String.castToJs(output);
-           Js.String.make(output);
-         })
-         |> IO.mapError(error =>
-              `CompilationError(
-                Js.Exn.message(error)
-                |> Option.getOrElse("Unknown compilation error"),
-              )
-            )
-         |> IO.map(output => {
-              // Parse compilation output to extract errors and warnings
-              let lines = String.splitList(~delimiter="\n", output);
-              let errors =
-                List.filter(
-                  line => String.contains(~search="Error:", line),
-                  lines,
-                );
-              let warnings =
-                List.filter(
-                  line => String.contains(~search="Warning:", line),
-                  lines,
-                );
-
-              [|
-                (
-                  {
-                    file_path: outputDir,
-                    success: List.length(errors) == 0,
-                    errors: Array.fromList(errors),
-                    warnings: Array.fromList(warnings),
-                  }: compilationResult
-                ),
-              |];
-            })
-       });
   };
 };
 
@@ -313,29 +209,8 @@ let processDigestFile =
            Js.log(Printf.sprintf("Extracted %d code files", total_files));
 
            FileProcessing.writeExtractedFiles(extracted_files)
-           |> IO.map(_ => extractionResult);
+           |> IO.map(() => extractionResult);
          }
        );
      });
-};
-
-let compileExtractedFiles =
-    (~outputDir: string): IO.t(array(compilationResult), processError) => {
-  CompilationCheck.compileFiles(outputDir);
-};
-
-/* High-level API functions */
-let processAndCompile =
-    (~digestFilePath: string, ~outputDir: string)
-    : IO.t((extractionResult, array(compilationResult)), processError) => {
-  processDigestFile(~digestFilePath, ~outputDir)
-  |> IO.flatMap(extractionResult => {
-       compileExtractedFiles(~outputDir)
-       |> IO.map(compilationResults => (extractionResult, compilationResults))
-     });
-};
-
-/* Error handling utilities */
-module ErrorUtils = {
-  let processErrorToString = Shared.ErrorUtils.processErrorToString;
 };

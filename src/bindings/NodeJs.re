@@ -1,5 +1,33 @@
 open Relude.Globals;
 
+module Child_process = {
+  /* Types from Node.js API */
+  type execException;
+  type childProcess;
+
+  type execCallback = (Js.nullable(execException), string, string) => unit;
+
+  [@mel.module "node:child_process"]
+  external exec: (string, execCallback) => childProcess = "exec";
+
+  let exec: string => IO.t(string, string) =
+    cmd =>
+      IO.async(onDone =>
+        exec(
+          cmd,
+          (error: Js.nullable(execException), stdout: string, stderr: string) => {
+          (
+            switch (error |> Js.Nullable.toOption) {
+            | Some(_e) => stderr |> Result.error
+            | None => stdout |> Result.pure
+            }
+          )
+          |> (res => onDone(res))
+        })
+        |> ignore
+      );
+};
+
 /**
  * Node.js File System bindings
  *
@@ -9,6 +37,19 @@ open Relude.Globals;
  * 3. Group related bindings in modules (Fs, Path, etc.)
  */
 module Fs = {
+  type fileFlags =
+    | [@mel.as "r"] Read
+    | [@mel.as "r+"] Read_write
+    | [@mel.as "rs+"] Read_write_sync
+    | [@mel.as "w"] Write
+    | [@mel.as "wx"] Write_fail_if_exists
+    | [@mel.as "w+"] Write_read
+    | [@mel.as "wx+"] Write_read_fail_if_exists
+    | [@mel.as "a"] Append
+    | [@mel.as "ax"] Append_fail_if_exists
+    | [@mel.as "a+"] Append_read
+    | [@mel.as "ax+"] Append_read_fail_if_exists;
+
   // Raw external bindings
   // [@mel.module "fs"]
   // external readFileSync': (string, [@bs.string] [ | `utf8]) => string =
@@ -29,6 +70,70 @@ module Fs = {
   [@mel.module "fs"]
   external readdirSync': string => array(string) = "readdirSync";
   let readdirSync = path => IO.triesJS(() => readdirSync'(path));
+
+  type fileEncoding = [ | `utf8];
+
+  type writeFileOptions = {
+    encoding: Js.nullable(fileEncoding),
+    flag: Js.nullable(fileFlags),
+    mode: Js.nullable(int),
+  };
+
+  let makeWriteFileOptions =
+      (~encoding=`utf8, ~flag=?, ~mode=?, ()): writeFileOptions => {
+    encoding: encoding |> Js.Nullable.return,
+    flag: flag |> Js.Nullable.fromOption,
+    mode: mode |> Js.Nullable.fromOption,
+  };
+
+  [@mel.module "fs"]
+  external writeFileSync: (string, string, writeFileOptions) => unit =
+    "writeFileSync";
+
+  [@mel.module "fs"]
+  external writeFileAsUtf8Sync: (string, string, [@mel.as "utf8"] _) => unit =
+    "writeFileSync";
+
+  /* write to a file, if directories don't exist create them */
+  let writeFileSyncRecursive: (string, string, writeFileOptions) => unit = [%mel.raw
+    {|function writeFileSyncRecursive(filename, content, charset) {
+        const fs = require('fs');
+
+        // -- normalize path separator to '/' instead of path.sep,
+        // -- as / works in node for Windows as well, and mixed \\ and / can appear in the path
+        let filepath = filename.replace(/\\/g,'/');
+
+        // -- preparation to allow absolute paths as well
+        let root = '';
+        if (filepath[0] === '/') {
+          root = '/';
+          filepath = filepath.slice(1);
+        }
+        else if (filepath[1] === ':') {
+          root = filepath.slice(0,3);   // c:\
+          filepath = filepath.slice(3);
+        }
+
+        // -- create folders all the way down
+        const folders = filepath.split('/').slice(0, -1);  // remove last item, file
+        folders.reduce(
+          (acc, folder) => {
+            const folderPath = acc + folder + '/';
+            if (!fs.existsSync(folderPath)) {
+              fs.mkdirSync(folderPath);
+            }
+            return folderPath
+          },
+          root // first 'acc', important
+        );
+
+        // -- write file
+        fs.writeFileSync(root + filepath, content, charset);
+      }
+    |}
+  ];
+  let writeFileSyncRecursive = (filename, content, options) =>
+    IO.triesJS(() => writeFileSyncRecursive(filename, content, options));
 
   [@mel.module "fs"] external statSync': string => 'a = "statSync";
   let statSync = path => IO.triesJS(() => statSync'(path));
