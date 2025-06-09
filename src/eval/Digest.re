@@ -274,14 +274,14 @@ module EncodeDigest = {
 /* Write digest result to file using shared JSONL operations */
 let writeDigestResult =
     (result: digestResult, outputPath: string): IO.t(unit, digestError) => {
-  let jsonContent = EncodeDigest.encodeDigestResult(result);
-  Shared.JsonlOps.appendJsonToJsonl(outputPath, jsonContent)
-  |> IO.mapError(error => {
-       switch (error) {
-       | `FileWriteError(jsError) => `FileWriteError(jsError)
-       | `FileReadError(jsError) => `FileWriteError(jsError) // Convert read error to write error for consistency
-       }
-     });
+  EncodeDigest.encodeDigestResult(result)
+  |> Js.Json.stringify
+  |> Bindings.NodeJs.Fs.writeFileSyncRecursive(
+       outputPath,
+       _,
+       Bindings.NodeJs.Fs.makeWriteFileOptions(),
+     )
+  |> IO.mapError(error => `FileWriteError(error));
 };
 
 /* Main digest processing function with k parameter */
@@ -385,45 +385,42 @@ module DigestUtils = {
   let digestSingleTaskById =
       (
         ~modelName,
-        ~inputPath: string,
+        ~taskListPath: string,
         ~taskId: int,
         ~outputPath: string,
         ~promptIterations: int=1,
         (),
       ) // Number of times to run each prompt
-      : IO.t(option(digestResult), string) => {
+      : IO.t(digestResult, string) => {
     // Use shared function to load evaluation dataset
-    Shared.loadEvaluationDataset(inputPath)
+    Shared.loadEvaluationDataset(taskListPath)
     |> IO.tap(_ => Js.log("############ Loaded Data"))
-    |> IO.flatMap(tasks => {
-         // Use shared TaskUtils to find task by ID
-         switch (Shared.EvaluationTask.getTaskById(tasks, taskId)) {
-         | Some(task) =>
-           digestSingleTest(
-             ~modelName,
-             ~outputPath,
-             ~promptIterations,
-             task,
-             (),
-           )
-           |> IO.map(result => Some(result))
-           |> IO.mapError(error => {
-                switch (error) {
-                | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
-                | `FileWriteError(jsError) =>
-                  "File write error: "
-                  ++ (
-                    Js.Exn.message(jsError)
-                    |> Option.getOrElse("<<NO MESSAGE>>")
-                  )
-                | `PromptGenerationError(msg) =>
-                  "Prompt generation error: " ++ msg
-                | `EncodingError(msg) => "Encoding error: " ++ msg
-                }
-              })
-         | None => IO.pure(None)
-         }
-       });
+    |> IO.flatMap(tasks =>
+         Shared.EvaluationTask.getTaskById(tasks, taskId)
+         |> Option.fold("Task Not Found" |> IO.throw, task =>
+              digestSingleTest(
+                ~modelName,
+                ~outputPath,
+                ~promptIterations,
+                task,
+                (),
+              )
+              |> IO.mapError(error =>
+                   switch (error) {
+                   | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
+                   | `FileWriteError(jsError) =>
+                     "File write error: "
+                     ++ (
+                       Js.Exn.message(jsError)
+                       |> Option.getOrElse("<<NO MESSAGE>>")
+                     )
+                   | `PromptGenerationError(msg) =>
+                     "Prompt generation error: " ++ msg
+                   | `EncodingError(msg) => "Encoding error: " ++ msg
+                   }
+                 )
+            )
+       );
   };
 
   /* Analysis functions for k-repeated prompts */

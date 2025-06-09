@@ -128,7 +128,10 @@ module FileProcessing = {
 
   /* Extract code from digest result */
   let extractAllCode =
-      (~baseDir, {prompt_results, task, _}: Shared.DigestResult.t)
+      (
+        ~baseDir,
+        {prompt_results, task, processed_at, _}: Shared.DigestResult.t,
+      )
       : extractionResult => {
     let startTime = Js.Date.now();
 
@@ -172,6 +175,15 @@ module FileProcessing = {
       extracted_files: finalExtractedFiles,
       total_files: Array.length(finalExtractedFiles),
       processing_time: Js.Date.now() -. startTime,
+      // Task metadata for evaluation
+      task,
+      executed_at: Utils.DateUtils.jsFloatToISOString(processed_at),
+      // Test execution data needed for CompilationCheck.re
+      test_setup_code: task.test_setup_code,
+      test_list: task.test_list,
+      challenge_test_list: task.challenge_test_list,
+      // Prompt information for looking up template_hash
+      prompt_results,
     };
   };
 

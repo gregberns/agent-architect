@@ -9,6 +9,7 @@ let testProcessDigestFile = () => {
   let modelResponseOutputPath = "./data/evaluation/outputs/runs/001_2025-06-04_09-00-00/task_601.json";
   let compilePath = "./data/evaluation/outputs/scratch/001_2025-06-04_09-00-00";
   let codeValidationResultsPath = "./data/evaluation/outputs/test-results/001_2025-06-04_09-00-00";
+  let gradedResultsPath = "./data/evaluation/outputs/test-results-graded/001_2025-06-04_09-00-00";
 
   Js.log("=== Testing Process.re Code Extraction ===");
   Js.log("Digest file: " ++ modelResponseOutputPath);
@@ -56,6 +57,10 @@ let testProcessDigestFile = () => {
               |> Option.getOrElse("<<NO COMPILE ERROR MESSAGE>>"),
             )
           ),
+     )
+  |> IO.flatMap(
+       Eval.GradeOutcome.gradeAndWrite(gradedResultsPath)
+       >> IO.mapError(e => `GradingError(e)),
      )
   |> IO.unsafeRunAsync(
        fun

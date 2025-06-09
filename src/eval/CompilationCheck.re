@@ -2,6 +2,7 @@
 type extractedCode = Shared.ExtractedCode.t;
 type extractionResult = Shared.ExtractionResult.t;
 type compilationResult = Shared.CompilationResult.t;
+type compilationResults = Shared.CompilationResults.t;
 type processError = Shared.processError;
 
 // let run = buildCommand =>
@@ -86,7 +87,18 @@ let checkFiles =
     (
       ~compilePath: string,
       ~codeValidationResultsPath: string,
-      {extracted_files, _}: Shared.ExtractionResult.t,
+      {
+        extracted_files,
+        task,
+        executed_at,
+        test_setup_code,
+        test_list,
+        challenge_test_list,
+        prompt_results,
+        total_files,
+        processing_time,
+        _,
+      }: Shared.ExtractionResult.t,
     ) =>
   extracted_files
   |> Array.IO.traverse(({file_path, _} as extractedCode: extractedCode) => {
@@ -110,14 +122,29 @@ let checkFiles =
          "<<UNKNOWN ERROR FROM: " ++ __MODULE__ ++ ".checkFiles >>",
        )
      )
-  |> IO.flatMap((x: array(compilationResult)) =>
-       x
-       |> Shared.CompilationResult.encodeArray
+  |> IO.flatMap((compilation_results: array(compilationResult)) => {
+       let enhancedResults =
+         Shared.CompilationResults.make(
+           ~compilation_results,
+           ~task,
+           ~executed_at,
+           ~test_setup_code,
+           ~test_list,
+           ~challenge_test_list,
+           ~prompt_results,
+           ~total_files,
+           ~processing_time,
+           (),
+         );
+
+       enhancedResults
+       |> Shared.CompilationResults.encode
        |> Js.Json.stringify
+       // FIX ME
        |> Bindings.NodeJs.Fs.writeFileSyncRecursive(
             codeValidationResultsPath ++ "/test.json",
             _,
             Bindings.NodeJs.Fs.makeWriteFileOptions(~flag=Write, ()),
           )
-       |> IO.map(() => x)
-     );
+       |> IO.map(() => enhancedResults);
+     });

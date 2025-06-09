@@ -11,3 +11,5 @@ coverage
 *.pkl
 
 .mcp.json
+
+data

@@ -275,6 +275,26 @@ module ExtractedCode = {
     file_path: string,
   };
 
+  let decode: Utils.JsonUtils.Decode.t(t) = {
+    open Utils.JsonUtils.Decode;
+    let+ content = field("content", string)
+    and+ task_id = field("task_id", intFromNumber)
+    and+ template_name = field("template_name", string)
+    and+ template_hash = field("template_hash", string)
+    and+ invocation_index = field("invocation_index", intFromNumber)
+    and+ response_index = field("response_index", intFromNumber)
+    and+ file_path = field("file_path", string);
+    {
+      content,
+      task_id,
+      template_name,
+      template_hash,
+      invocation_index,
+      response_index,
+      file_path,
+    };
+  };
+
   let encode = (extracted: t): Js.Json.t => {
     Js.Json.object_(
       Js.Dict.fromList([
@@ -302,6 +322,15 @@ module ExtractionResult = {
     extracted_files: array(ExtractedCode.t),
     total_files: int,
     processing_time: float,
+    // Task metadata for evaluation
+    task: EvaluationTask.t,
+    executed_at: string, // ISO date string instead of JS float
+    // Test execution data needed for CompilationCheck.re
+    test_setup_code: string,
+    test_list: array(string),
+    challenge_test_list: array(string),
+    // Prompt information for looking up template_hash
+    prompt_results: array(PromptResult.t),
   };
 
   let encode = (result: t): Js.Json.t => {
@@ -315,6 +344,25 @@ module ExtractionResult = {
         ),
         ("total_files", Js.Json.number(Float.fromInt(result.total_files))),
         ("processing_time", Js.Json.number(result.processing_time)),
+        ("task", EvaluationTask.encode(result.task)),
+        ("executed_at", Js.Json.string(result.executed_at)),
+        ("test_setup_code", Js.Json.string(result.test_setup_code)),
+        (
+          "test_list",
+          Js.Json.array(Array.map(Js.Json.string, result.test_list)),
+        ),
+        (
+          "challenge_test_list",
+          Js.Json.array(
+            Array.map(Js.Json.string, result.challenge_test_list),
+          ),
+        ),
+        (
+          "prompt_results",
+          Js.Json.array(
+            Array.map(PromptResult.encode, result.prompt_results),
+          ),
+        ),
       ]),
     );
   };
@@ -368,6 +416,29 @@ module CompilationResult = {
       ]),
     );
   };
+  let decodeStringList: Utils.JsonUtils.Decode.t(list(string)) = {
+    Utils.JsonUtils.Decode.(array(string) |> map(Array.toList));
+  };
+
+  let decode: Utils.JsonUtils.Decode.t(t) = {
+    open Utils.JsonUtils.Decode;
+    let+ extractedCode = field("extractedCode", ExtractedCode.decode)
+    and+ file_path = field("filePath", string)
+    and+ runtimeError = field("runtimeError", decodeStringList)
+    and+ parseError = field("parseError", decodeStringList)
+    and+ compileError = field("compileError", decodeStringList)
+    and+ testError = field("testError", decodeStringList)
+    and+ codeStyle = field("codeStyle", decodeStringList);
+    {
+      extractedCode,
+      file_path,
+      runtimeError,
+      parseError,
+      compileError,
+      testError,
+      codeStyle,
+    };
+  };
 
   let encodeArray = arr => Js.Json.array(Array.map(encode, arr));
 };
@@ -391,6 +462,7 @@ type processError = [
   | `ValidationError(string, Utils.JsonUtils.ParseError.failure)
   | `CodeExtractionError(string)
   | `CompilationError(string)
+  | `GradingError(string)
   | `DirectoryCreationError(Js.Exn.t)
 ];
 
@@ -571,6 +643,7 @@ module ErrorUtils = {
     | `EncodingError(msg) => "Encoding error: " ++ msg
     | `CodeExtractionError(msg) => "Code extraction error: " ++ msg
     | `CompilationError(msg) => "Compilation error: " ++ msg
+    | `GradingError(msg) => "Grading error: " ++ msg
     | `DirectoryCreationError(jsError) =>
       "Directory creation error: "
       ++ (Js.Exn.message(jsError) |> Option.getOrElse("<<NO MESSAGE>>"))
@@ -619,4 +692,81 @@ let processEvaluationFile = (filePath: string): IO.t(unit, string) => {
          Array.length(testsWithChallenges),
        );
      });
+};
+
+/* Enhanced compilation results with evaluation metadata */
+module CompilationResults = {
+  type t = {
+    compilation_results: array(CompilationResult.t),
+    // Task metadata for evaluation
+    task: EvaluationTask.t,
+    executed_at: string,
+    // Test execution data
+    test_setup_code: string,
+    test_list: array(string),
+    challenge_test_list: array(string),
+    // Prompt information for looking up template_hash
+    prompt_results: array(PromptResult.t),
+    total_files: int,
+    processing_time: float,
+  };
+
+  let make =
+      (
+        ~compilation_results,
+        ~task,
+        ~executed_at,
+        ~test_setup_code,
+        ~test_list,
+        ~challenge_test_list,
+        ~prompt_results,
+        ~total_files,
+        ~processing_time,
+        (),
+      )
+      : t => {
+    compilation_results,
+    task,
+    executed_at,
+    test_setup_code,
+    test_list,
+    challenge_test_list,
+    prompt_results,
+    total_files,
+    processing_time,
+  };
+
+  let encode = (results: t): Js.Json.t => {
+    Js.Json.object_(
+      Js.Dict.fromList([
+        (
+          "compilation_results",
+          Js.Json.array(
+            Array.map(CompilationResult.encode, results.compilation_results),
+          ),
+        ),
+        ("task", EvaluationTask.encode(results.task)),
+        ("executed_at", Js.Json.string(results.executed_at)),
+        ("test_setup_code", Js.Json.string(results.test_setup_code)),
+        (
+          "test_list",
+          Js.Json.array(Array.map(Js.Json.string, results.test_list)),
+        ),
+        (
+          "challenge_test_list",
+          Js.Json.array(
+            Array.map(Js.Json.string, results.challenge_test_list),
+          ),
+        ),
+        (
+          "prompt_results",
+          Js.Json.array(
+            Array.map(PromptResult.encode, results.prompt_results),
+          ),
+        ),
+        ("total_files", Js.Json.number(Float.fromInt(results.total_files))),
+        ("processing_time", Js.Json.number(results.processing_time)),
+      ]),
+    );
+  };
 };
