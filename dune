@@ -10,7 +10,7 @@
 ;; - remove the `dirs` stanza below
 ;; - add a `(subdir node_modules (dirs only_your_package))`
 
-(dirs :standard \ node_modules)
+(dirs :standard \ node_modules data)
 
 (melange.emit
  (target test_process)

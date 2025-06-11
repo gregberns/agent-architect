@@ -119,10 +119,17 @@ module TaskGradeReport = {
     averageScore: float,
   };
 
+  type gradeSummary = {
+    promptTemplate: Shared.PromptTemplate.t,
+    scores: array(int),
+    averageScore: float,
+  };
+
   type t = {
+    executedAt: string,
     task: Shared.EvaluationTask.t,
     gradeResults: array(GradeResult.t),
-    executedAt: string,
+    gradeSummaries: array(gradeSummary),
     totalFiles: int,
     processingTime: float,
     statistics,
@@ -182,6 +189,7 @@ module TaskGradeReport = {
       (
         task: Shared.EvaluationTask.t,
         gradeResults: array(GradeResult.t),
+        gradeSummaries,
         executedAt: string,
         totalFiles: int,
         processingTime: float,
@@ -192,11 +200,30 @@ module TaskGradeReport = {
     {
       task,
       gradeResults,
+      gradeSummaries,
       executedAt,
       totalFiles,
       processingTime,
       statistics,
     };
+  };
+
+  let encodeGradeSummary = (summary: gradeSummary): Js.Json.t => {
+    Js.Json.object_(
+      Js.Dict.fromList([
+        (
+          "promptTemplate",
+          Shared.PromptTemplate.encode(summary.promptTemplate),
+        ),
+        ("averageScore", Js.Json.number(summary.averageScore)),
+        (
+          "scores",
+          Js.Json.array(
+            Array.map(Float.fromInt >> Js.Json.number, summary.scores),
+          ),
+        ),
+      ]),
+    );
   };
 
   let encode = (report: t): Js.Json.t => {
@@ -206,6 +233,12 @@ module TaskGradeReport = {
         (
           "gradeResults",
           Js.Json.array(Array.map(GradeResult.encode, report.gradeResults)),
+        ),
+        (
+          "gradeSummary",
+          Js.Json.array(
+            Array.map(encodeGradeSummary, report.gradeSummaries),
+          ),
         ),
         ("executedAt", Js.Json.string(report.executedAt)),
         ("totalFiles", Js.Json.number(Float.fromInt(report.totalFiles))),
@@ -266,44 +299,80 @@ let readCompilationResults =
      });
 };
 
+// type x = {
+//   promptHash: string,
+//   promptTemplate: Shared.PromptTemplate.t,
+//   scoreValues: array(int),
+// };
+
 let gradeCompilationResults =
     (compilationResults: Shared.CompilationResults.t): TaskGradeReport.t => {
   let gradeResults =
-    Array.map(
-      (compilationResult: Shared.CompilationResult.t) => {
-        // Find the corresponding prompt from prompt_results
-        let prompt =
-          switch (
-            Array.find(
-              (promptResult: Shared.PromptResult.t) =>
-                promptResult.template_hash
-                == compilationResult.extractedCode.template_hash,
-              compilationResults.prompt_results,
-            )
-          ) {
-          | Some(promptResult) => promptResult.prompt
-          | None =>
-            "Prompt not found for template_hash: "
-            ++ compilationResult.extractedCode.template_hash
-          };
+    compilationResults.compilation_results
+    |> Array.map((compilationResult: Shared.CompilationResult.t) => {
+         // Find the corresponding prompt from prompt_results
+         let prompt =
+           switch (
+             Array.find(
+               (promptResult: Shared.PromptResult.t) =>
+                 promptResult.promptTemplate.hash
+                 == compilationResult.extractedCode.promptTemplate.hash,
+               compilationResults.prompt_results,
+             )
+           ) {
+           | Some(promptResult) => promptResult.prompt
+           | None =>
+             "Prompt not found for template_hash: "
+             ++ compilationResult.extractedCode.promptTemplate.hash
+           };
 
-        GradeResult.make(compilationResult, prompt);
-      },
-      compilationResults.compilation_results,
-    );
+         GradeResult.make(compilationResult, prompt);
+       });
+
+  let gradeSummaries =
+    gradeResults
+    |> Array.foldLeft(
+         (
+           acc,
+           {
+             scoreValue,
+             extractedCode: {promptTemplate: {hash, _} as promptTemplate, _},
+             _,
+           }: GradeResult.t,
+         ) =>
+           acc
+           |> String.Map.update(
+                hash,
+                Option.map(((prompt, scores)) =>
+                  (prompt, scores |> Array.append(scoreValue))
+                )
+                >> Option.getOrElse((promptTemplate, [|scoreValue|]))
+                >> Option.pure,
+              ),
+         String.Map.make(),
+       )
+    |> String.Map.valueArray
+    |> Array.map(
+         ((promptTemplate: Shared.PromptTemplate.t, scores: array(int))): TaskGradeReport.gradeSummary => {
+         {
+           promptTemplate,
+           scores,
+           averageScore: scores |> Utils.NumberUtils.avg,
+         }
+       });
 
   TaskGradeReport.make(
     compilationResults.task,
     gradeResults,
+    gradeSummaries,
     compilationResults.executed_at,
     compilationResults.total_files,
     compilationResults.processing_time,
   );
 };
 
-let gradeFromFile = (filePath: string): IO.t(TaskGradeReport.t, string) => {
-  readCompilationResults(filePath) |> IO.map(gradeCompilationResults);
-};
+// let gradeFromFile = (filePath: string): IO.t(TaskGradeReport.t, string) =>
+//   ;
 
 let writeGradeReport =
     (filePath: string, report: TaskGradeReport.t): IO.t(unit, string) => {
@@ -311,8 +380,7 @@ let writeGradeReport =
   let content = Js.Json.stringify(json);
 
   Bindings.NodeJs.Fs.writeFileSyncRecursive(
-    // FIX ME
-    filePath ++ "/test.json",
+    filePath,
     content,
     Bindings.NodeJs.Fs.makeWriteFileOptions(~flag=Write, ()),
   )
@@ -322,12 +390,17 @@ let writeGradeReport =
      );
 };
 
-let gradeAndWrite: (string, Shared.CompilationResults.t) => IO.t(unit, string) =
-  filePath => gradeCompilationResults >> writeGradeReport(filePath);
+let gradeAndWrite:
+  (string, Shared.CompilationResults.t) => IO.t(unit, Shared.processError) =
+  filePath =>
+    gradeCompilationResults
+    >> writeGradeReport(filePath)
+    >> IO.mapError(e => `GradingError(e));
 
 let processGradingFromFiles =
     (inputPath: string, outputPath: string): IO.t(unit, string) => {
-  gradeFromFile(inputPath)
+  readCompilationResults(inputPath)
+  |> IO.map(gradeCompilationResults)
   |> IO.flatMap(report => writeGradeReport(outputPath, report))
   |> IO.map(_ => {
        Printf.printf(

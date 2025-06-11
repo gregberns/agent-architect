@@ -93,6 +93,8 @@ module Fs = {
   [@mel.module "fs"]
   external writeFileAsUtf8Sync: (string, string, [@mel.as "utf8"] _) => unit =
     "writeFileSync";
+  let writeFileAsUtf8Sync = (filename, content) =>
+    IO.triesJS(() => writeFileAsUtf8Sync(filename, content));
 
   /* write to a file, if directories don't exist create them */
   let writeFileSyncRecursive: (string, string, writeFileOptions) => unit = [%mel.raw
@@ -219,4 +221,19 @@ type nodeStats = {
   isFile: unit => bool,
   [@bs.get]
   size: int,
+};
+
+/**
+ * Sleep utility
+ */
+module Sleep = {
+  /* Raw setTimeout binding */
+  [@mel.scope "global"] 
+  external setTimeout: (unit => unit, int) => 'timeoutId = "setTimeout";
+
+  /* Sleep function wrapped in IO that takes milliseconds */
+  let sleep = (milliseconds: int): IO.t(unit, 'e) =>
+    IO.async(onDone =>
+      setTimeout(() => onDone(Result.Ok()), milliseconds) |> ignore
+    );
 };

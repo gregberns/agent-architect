@@ -56,21 +56,27 @@ module CodeExtraction = {
   let generateFilePath =
       (
         ~baseDir: string,
-        ~taskId: int,
         ~templateHash: string,
         ~invocationIndex: int,
         ~responseIndex: int,
       )
       : string => {
-    let taskDir = Printf.sprintf("%s/task_%d", baseDir, taskId);
-    let filename =
+    // let taskDir = Printf.sprintf("%s/task_%d", baseDir, taskId);
+    let moduleName =
       Printf.sprintf(
-        "T_%s_%d_%d.re",
+        "T_%s_%d_%d",
         templateHash,
         invocationIndex,
         responseIndex,
       );
-    Printf.sprintf("%s/%s", taskDir, filename);
+    // let filename =
+    //   Printf.sprintf(
+    //     "T_%s_%d_%d.re",
+    //     templateHash,
+    //     invocationIndex,
+    //     responseIndex,
+    //   );
+    Printf.sprintf("%s/%s/Task.re", baseDir, moduleName);
   };
 
   /* Create directory if it doesn't exist */
@@ -102,27 +108,21 @@ module FileProcessing = {
     Shared.FileOps.readFileContents(filePath)
     |> IO.mapError(error => `FileReadError(error))
     |> IO.flatMap(content => {
-         switch (Utils.JsonUtils.parseSafe(content)) {
-         | Some(json) =>
-           let decoded = Shared.DigestResult.decode(json);
-
-           decoded
-           |> Result.fold(
-                e =>
-                  IO.throw(
-                    `JsonParseError((
-                      "Failed to decode digest result: "
-                      ++ (e |> BsDecode.Decode_ParseError.failureToDebugString),
-                      "",
-                    )),
-                  ),
-                digestResult => IO.pure(digestResult),
-              );
-         | None =>
-           IO.throw(
-             `JsonParseError(("Invalid JSON in file: " ++ filePath, "")),
-           )
-         }
+         Utils.JsonUtils.parseSafe(content)
+         |> Result.fromOption(
+              `JsonParseError(("Invalid JSON in file: " ++ filePath, "")),
+            )
+         |> Result.flatMap(json =>
+              Shared.DigestResult.decode(json)
+              |> Result.mapError(e =>
+                   `JsonParseError((
+                     "Failed to decode digest result: "
+                     ++ (e |> BsDecode.Decode_ParseError.failureToDebugString),
+                     "",
+                   ))
+                 )
+            )
+         |> IO.fromResult
        });
   };
 
@@ -149,16 +149,14 @@ module FileProcessing = {
                       {
                         content: code,
                         task_id: task.task_id,
-                        template_name: promptResult.template_name,
-                        template_hash: promptResult.template_hash,
+                        promptTemplate: promptResult.promptTemplate,
                         invocation_index:
                           response.invocation_index |> Option.getOrElse(0),
                         response_index: responseIndex,
                         file_path:
                           CodeExtraction.generateFilePath(
                             ~baseDir,
-                            ~taskId=task.task_id,
-                            ~templateHash=promptResult.template_hash,
+                            ~templateHash=promptResult.promptTemplate.hash,
                             ~invocationIndex=
                               response.invocation_index |> Option.getOrElse(0),
                             ~responseIndex,

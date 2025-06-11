@@ -44,43 +44,6 @@ module TaskRange = {
   };
 };
 
-/* Prompt template specification */
-module PromptTemplate = {
-  type t = {
-    template_name: string,
-    template_hash: string,
-    prompt_text: string,
-  };
-
-  let make = (~template_name, ~template_hash, ~prompt_text) => {
-    template_name,
-    template_hash,
-    prompt_text,
-  };
-
-  let encode = (prompt: t): Js.Json.t => {
-    Js.Json.object_(
-      Js.Dict.fromList([
-        ("template_name", Js.Json.string(prompt.template_name)),
-        ("template_hash", Js.Json.string(prompt.template_hash)),
-        ("prompt_text", Js.Json.string(prompt.prompt_text)),
-      ]),
-    );
-  };
-
-  let decode: Utils.JsonUtils.Decode.t(t) = {
-    open Utils.JsonUtils.Decode;
-    let+ template_name = field("template_name", string)
-    and+ template_hash = field("template_hash", string)
-    and+ prompt_text = field("prompt_text", string);
-    {
-      template_name,
-      template_hash,
-      prompt_text,
-    };
-  };
-};
-
 /* Input configuration for evaluation runs */
 module InputConfig = {
   type t = {
@@ -208,10 +171,9 @@ module EvaluationRun = {
     epoch: string,
     base_directory: string,
     input_config: InputConfig.t,
-    runDefinitionPath: string,
     task_paths: array(TaskPaths.t),
     prompt_runs_file_path: string,
-    prompts: array(PromptTemplate.t) // Loaded prompt templates
+    prompts: array(Shared.PromptTemplate.t) // Loaded prompt templates
   };
 
   let make =
@@ -219,7 +181,6 @@ module EvaluationRun = {
         ~epoch,
         ~base_directory,
         ~input_config,
-        ~runDefinitionPath,
         ~task_paths,
         ~prompt_runs_file_path,
         ~prompts,
@@ -227,7 +188,6 @@ module EvaluationRun = {
     epoch,
     base_directory,
     input_config,
-    runDefinitionPath,
     task_paths,
     prompt_runs_file_path,
     prompts,
@@ -246,7 +206,9 @@ module EvaluationRun = {
         ("prompt_runs_file_path", Js.Json.string(run.prompt_runs_file_path)),
         (
           "prompts",
-          Js.Json.array(Array.map(PromptTemplate.encode, run.prompts)),
+          Js.Json.array(
+            Array.map(Shared.PromptTemplate.encode, run.prompts),
+          ),
         ),
       ]),
     );
@@ -257,15 +219,13 @@ module EvaluationRun = {
     let+ epoch = field("epoch", string)
     and+ base_directory = field("base_directory", string)
     and+ input_config = field("input_config", InputConfig.decode)
-    and+ runDefinitionPath = field("runDefinitionPath", string)
     and+ task_paths = field("task_paths", array(TaskPaths.decode))
     and+ prompt_runs_file_path = field("prompt_runs_file_path", string)
-    and+ prompts = field("prompts", array(PromptTemplate.decode));
+    and+ prompts = field("prompts", array(Shared.PromptTemplate.decode));
     {
       epoch,
       base_directory,
       input_config,
-      runDefinitionPath,
       task_paths,
       prompt_runs_file_path,
       prompts,
@@ -344,41 +304,16 @@ let generateRunDefinitionFilePath = (~baseDir, ~epoch): string => {
    PROMPT LOADING FUNCTIONS
    ============================================================================ */
 
-/* JSON structure for prompt file */
-module PromptFile = {
-  type promptTemplate = {
-    name: string,
-    template: string,
-  };
-
-  type t = {prompts: array(promptTemplate)};
-
-  let decodePromptTemplate: Utils.JsonUtils.Decode.t(promptTemplate) = {
-    open Utils.JsonUtils.Decode;
-    let+ name = field("name", string)
-    and+ template = field("template", string);
-    {
-      name,
-      template,
-    };
-  };
-
-  let decode: Utils.JsonUtils.Decode.t(t) = {
-    open Utils.JsonUtils.Decode;
-    let+ prompts = field("prompts", array(decodePromptTemplate));
-    {prompts: prompts};
-  };
-};
-
 /* Load prompt templates from JSON file */
 let loadPromptTemplates =
-    (filePath: string): IO.t(array(PromptTemplate.t), Shared.processError) => {
+    (filePath: string)
+    : IO.t(array(Shared.PromptTemplate.t), Shared.processError) => {
   Shared.FileOps.readFileContents(filePath)
   |> IO.mapError(error => `FileReadError(error))
   |> IO.flatMap(content => {
        switch (Utils.JsonUtils.parseSafe(content)) {
        | Some(json) =>
-         PromptFile.decode(json)
+         Shared.PromptFile.decode(json)
          |> Result.fold(
               e =>
                 IO.throw(
@@ -387,26 +322,7 @@ let loadPromptTemplates =
                     e,
                   )),
                 ),
-              ({prompts}: PromptFile.t) => {
-                let prompts =
-                  Array.mapWithIndex(
-                    (promptTemplate, index) => {
-                      let hash =
-                        Printf.sprintf(
-                          "%s_%d",
-                          promptTemplate.PromptFile.name,
-                          index,
-                        );
-                      PromptTemplate.make(
-                        ~template_name=promptTemplate.PromptFile.name,
-                        ~template_hash=hash,
-                        ~prompt_text=promptTemplate.PromptFile.template,
-                      );
-                    },
-                    prompts,
-                  );
-                IO.pure(prompts);
-              },
+              ({prompts}: Shared.PromptFile.t) => prompts |> IO.pure,
             )
        | None =>
          IO.throw(
@@ -454,8 +370,6 @@ let generateEvaluationRun =
     );
   let promptRunsFilePath =
     generatePromptsFilePath(~baseDir=inputConfig.baseDir, ~epoch);
-  let runDefinitionFilePath =
-    generateRunDefinitionFilePath(~baseDir=inputConfig.baseDir, ~epoch);
 
   loadPromptTemplates(inputConfig.prompt_file_path)
   |> IO.map(prompts => {
@@ -463,7 +377,6 @@ let generateEvaluationRun =
          ~epoch,
          ~base_directory=inputConfig.baseDir,
          ~input_config=inputConfig,
-         ~runDefinitionPath=runDefinitionFilePath,
          ~task_paths=taskPaths,
          ~prompt_runs_file_path=promptRunsFilePath,
          ~prompts,
@@ -478,8 +391,6 @@ let generateEvaluationRunWithEpoch =
   let taskPaths =
     generateTaskPaths(~baseDir, ~epoch, ~taskRange=inputConfig.task_range);
   let promptRunsFilePath = generatePromptsFilePath(~baseDir, ~epoch);
-  let runDefinitionFilePath =
-    generateRunDefinitionFilePath(~baseDir=inputConfig.baseDir, ~epoch);
 
   loadPromptTemplates(inputConfig.prompt_file_path)
   |> IO.map(prompts => {
@@ -487,7 +398,6 @@ let generateEvaluationRunWithEpoch =
          ~epoch,
          ~base_directory=baseDir,
          ~input_config=inputConfig,
-         ~runDefinitionPath=runDefinitionFilePath,
          ~task_paths=taskPaths,
          ~prompt_runs_file_path=promptRunsFilePath,
          ~prompts,
@@ -500,8 +410,14 @@ let saveEvaluationRun =
     (evaluationRun: EvaluationRun.t): IO.t(unit, Shared.processError) => {
   let jsonContent = evaluationRun |> EvaluationRun.encode |> Js.Json.stringify;
 
+  let runDefinitionFilePath =
+    generateRunDefinitionFilePath(
+      ~baseDir=evaluationRun.base_directory,
+      ~epoch=evaluationRun.epoch,
+    );
+
   Bindings.NodeJs.Fs.writeFileSyncRecursive(
-    evaluationRun.prompt_runs_file_path,
+    runDefinitionFilePath,
     jsonContent,
     Bindings.NodeJs.Fs.makeWriteFileOptions(),
   )

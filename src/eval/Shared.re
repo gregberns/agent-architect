@@ -10,6 +10,59 @@ open Bindings.NodeJs;
 /* ============================================================================
    SHARED TYPES AND MODULES
    ============================================================================ */
+/* Prompt template specification */
+module PromptTemplate = {
+  type t = {
+    name: string,
+    hash: string,
+    prompt: string,
+  };
+
+  let generateTemplateHash = (prompt_name, prompt_text): string => {
+    // Simple hash based on template name and content
+    prompt_name ++ ":" ++ prompt_text |> Utils.StringUtils.simpleHash;
+  };
+
+  let make = (~name, ~prompt) => {
+    name,
+    hash: generateTemplateHash(name, prompt),
+    prompt,
+  };
+
+  let encode = (prompt: t): Js.Json.t => {
+    Js.Json.object_(
+      Js.Dict.fromList([
+        ("name", Js.Json.string(prompt.name)),
+        ("hash", Js.Json.string(prompt.hash)),
+        ("prompt", Js.Json.string(prompt.prompt)),
+      ]),
+    );
+  };
+
+  let decode: Utils.JsonUtils.Decode.t(t) = {
+    open Utils.JsonUtils.Decode;
+    let+ name = field("name", string)
+    and+ hash = Utils.JsonUtils.Decode.optionalField("hash", string)
+    and+ prompt = field("prompt", string);
+    {
+      name,
+      hash: hash |> Option.getOrElse(generateTemplateHash(name, prompt)),
+      prompt,
+    };
+  };
+};
+
+/* JSON structure for prompt file */
+module PromptFile = {
+  type t = {prompts: array(PromptTemplate.t)};
+
+  let decode: Utils.JsonUtils.Decode.t(t) = {
+    open Utils.JsonUtils.Decode;
+    let+ prompts = field("prompts", array(PromptTemplate.decode));
+    {prompts: prompts};
+  };
+};
+
 /* Core evaluation task module */
 module EvaluationTask = {
   type t = {
@@ -179,8 +232,7 @@ module ModelResponse = {
 /* Prompt result module */
 module PromptResult = {
   type t = {
-    template_name: string,
-    template_hash: string,
+    promptTemplate: PromptTemplate.t,
     prompt: string,
     responses: array(ModelResponse.t),
     total_invocations: int,
@@ -188,14 +240,14 @@ module PromptResult = {
 
   let decode: Utils.JsonUtils.Decode.t(t) = {
     open Utils.JsonUtils.Decode;
-    let+ template_name = field("template_name", string)
-    and+ template_hash = field("template_hash", string)
+    let+ promptTemplate = field("promptTemplate", PromptTemplate.decode)
+    // template_name = field("template_name", string)
+    // and+ template_hash = field("template_hash", string)
     and+ prompt = field("prompt", string)
     and+ responses = field("responses", array(ModelResponse.decode))
     and+ total_invocations = field("total_invocations", intFromNumber);
     {
-      template_name,
-      template_hash,
+      promptTemplate,
       prompt,
       responses,
       total_invocations,
@@ -205,8 +257,10 @@ module PromptResult = {
   let encode = (promptResult: t): Js.Json.t => {
     Js.Json.object_(
       Js.Dict.fromList([
-        ("template_name", Js.Json.string(promptResult.template_name)),
-        ("template_hash", Js.Json.string(promptResult.template_hash)),
+        (
+          "promptTemplate",
+          promptResult.promptTemplate |> PromptTemplate.encode,
+        ),
         ("prompt", Js.Json.string(promptResult.prompt)),
         (
           "responses",
@@ -268,8 +322,7 @@ module ExtractedCode = {
   type t = {
     content: string,
     task_id: int,
-    template_name: string,
-    template_hash: string,
+    promptTemplate: PromptTemplate.t,
     invocation_index: int,
     response_index: int,
     file_path: string,
@@ -279,16 +332,14 @@ module ExtractedCode = {
     open Utils.JsonUtils.Decode;
     let+ content = field("content", string)
     and+ task_id = field("task_id", intFromNumber)
-    and+ template_name = field("template_name", string)
-    and+ template_hash = field("template_hash", string)
+    and+ promptTemplate = field("promptTemplate", PromptTemplate.decode)
     and+ invocation_index = field("invocation_index", intFromNumber)
     and+ response_index = field("response_index", intFromNumber)
     and+ file_path = field("file_path", string);
     {
       content,
       task_id,
-      template_name,
-      template_hash,
+      promptTemplate,
       invocation_index,
       response_index,
       file_path,
@@ -300,8 +351,7 @@ module ExtractedCode = {
       Js.Dict.fromList([
         ("content", Js.Json.string(extracted.content)),
         ("task_id", Js.Json.number(Float.fromInt(extracted.task_id))),
-        ("template_name", Js.Json.string(extracted.template_name)),
-        ("template_hash", Js.Json.string(extracted.template_hash)),
+        ("promptTemplate", extracted.promptTemplate |> PromptTemplate.encode),
         (
           "invocation_index",
           Js.Json.number(Float.fromInt(extracted.invocation_index)),
@@ -463,6 +513,7 @@ type processError = [
   | `CodeExtractionError(string)
   | `CompilationError(string)
   | `GradingError(string)
+  | `DigestError(string)
   | `DirectoryCreationError(Js.Exn.t)
 ];
 
@@ -644,6 +695,7 @@ module ErrorUtils = {
     | `CodeExtractionError(msg) => "Code extraction error: " ++ msg
     | `CompilationError(msg) => "Compilation error: " ++ msg
     | `GradingError(msg) => "Grading error: " ++ msg
+    | `DigestError(msg) => "Digest error: " ++ msg
     | `DirectoryCreationError(jsError) =>
       "Directory creation error: "
       ++ (Js.Exn.message(jsError) |> Option.getOrElse("<<NO MESSAGE>>"))
