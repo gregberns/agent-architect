@@ -281,23 +281,20 @@ module TaskGradeReport = {
   };
 };
 
-let readCompilationResults =
-    (filePath: string): IO.t(Shared.CompilationResults.t, string) => {
-  Shared.FileOps.readFileContents(filePath)
-  |> IO.mapError(error =>
-       "Failed to read file: "
-       ++ (Js.Exn.message(error) |> Option.getOrElse("Unknown error"))
-     )
-  |> IO.flatMap(content => {
-       switch (Utils.JsonUtils.parseSafe(content)) {
-       | Some(_json) =>
-         // Note: We need to implement a decoder for CompilationResults.t
-         // For now, we'll need to handle this manually or extend Shared.re
-         IO.throw("JSON decoding for CompilationResults not yet implemented")
-       | None => IO.throw("Invalid JSON format in file: " ++ filePath)
-       }
-     });
-};
+// let readCompilationResults =
+//     (filePath: string): IO.t(Shared.CompilationResults.t, string) => {
+//   Shared.FileOps.readFileContents(filePath)
+//   |> IO.mapError(error => `FileReadError(error))
+//   |> IO.flatMap(content => {
+//        switch (Utils.JsonUtils.parseSafe(content)) {
+//        | Some(_json) =>
+//          // Note: We need to implement a decoder for CompilationResults.t
+//          // For now, we'll need to handle this manually or extend Shared.re
+//          IO.throw("JSON decoding for CompilationResults not yet implemented")
+//        | None => IO.throw("Invalid JSON format in file: " ++ filePath)
+//        }
+//      });
+// };
 
 // type x = {
 //   promptHash: string,
@@ -375,7 +372,8 @@ let gradeCompilationResults =
 //   ;
 
 let writeGradeReport =
-    (filePath: string, report: TaskGradeReport.t): IO.t(unit, string) => {
+    (filePath: string, report: TaskGradeReport.t)
+    : IO.t(unit, Shared.processError) => {
   let json = TaskGradeReport.encode(report);
   let content = Js.Json.stringify(json);
 
@@ -384,28 +382,195 @@ let writeGradeReport =
     content,
     Bindings.NodeJs.Fs.makeWriteFileOptions(~flag=Write, ()),
   )
-  |> IO.mapError(error =>
-       "Failed to write file: "
-       ++ (Js.Exn.message(error) |> Option.getOrElse("Unknown error"))
+  // |> IO.mapError(error =>
+  //      "Failed to write file: "
+  //      ++ (Js.Exn.message(error) |> Option.getOrElse("Unknown error"))
+  //    )
+  |> IO.mapError(e =>
+       `GradingError(
+         "Failed to write file writeGradeReport: "
+         ++ (Js.Exn.message(e) |> Option.getOrElse("Unknown error")),
+       )
      );
 };
 
+let taskSummary = ({gradeSummaries, _}: TaskGradeReport.t) => {
+  gradeSummaries
+  |> Array.map(
+       (
+         {averageScore, scores, promptTemplate: {hash, name, prompt}, _}: TaskGradeReport.gradeSummary,
+       ) => {
+       let scores =
+         scores |> Array.map(Int.toString) |> Array.String.intercalate(", ");
+       let averageScore = averageScore |> Float.toString;
+       {j|Prompt Name: $name (hash: $hash)
+Prompt: $prompt
+Scores: $scores
+Average Score: $averageScore|j};
+     })
+  |> Array.String.intercalate("\n\n")
+  |> String.concat({||});
+};
+
 let gradeAndWrite:
-  (string, Shared.CompilationResults.t) => IO.t(unit, Shared.processError) =
+  (string, Shared.CompilationResults.t) =>
+  IO.t(TaskGradeReport.t, Shared.processError) =
   filePath =>
     gradeCompilationResults
-    >> writeGradeReport(filePath)
-    >> IO.mapError(e => `GradingError(e));
+    >> (report => writeGradeReport(filePath, report) |> IO.map(() => report));
 
-let processGradingFromFiles =
-    (inputPath: string, outputPath: string): IO.t(unit, string) => {
-  readCompilationResults(inputPath)
-  |> IO.map(gradeCompilationResults)
-  |> IO.flatMap(report => writeGradeReport(outputPath, report))
-  |> IO.map(_ => {
-       Printf.printf(
-         "Grading completed. Results written to: %s\n",
-         outputPath,
-       )
-     });
+/* Generate markdown summary from array of task grade reports */
+let generateMarkdownSummary =
+    (reports: array(TaskGradeReport.t), epoch: string): string => {
+  // Extract prompt information from the first report (assuming all tasks use same prompts)
+  let promptInfo =
+    switch (Array.head(reports)) {
+    | Some(firstReport) =>
+      firstReport.gradeSummaries
+      |> Array.map(({promptTemplate, _}: TaskGradeReport.gradeSummary) =>
+           Printf.sprintf(
+             "- **%s** (hash: %s)\n  - Prompt: %s",
+             promptTemplate.name,
+             promptTemplate.hash,
+             promptTemplate.prompt,
+           )
+         )
+      |> Array.String.intercalate("\n")
+    | None => "No reports available"
+    };
+
+  // Calculate overall statistics
+  let totalTasks = Array.length(reports);
+  let totalAttempts =
+    Array.foldLeft(
+      (acc, report: TaskGradeReport.t) =>
+        acc + report.statistics.totalAttempts,
+      0,
+      reports,
+    );
+  let totalScoreSum =
+    Array.foldLeft(
+      (acc, report: TaskGradeReport.t) =>
+        acc
+        +. report.statistics.averageScore
+        *. Float.fromInt(report.statistics.totalAttempts),
+      0.0,
+      reports,
+    );
+  let overallAverageScore =
+    totalAttempts > 0 ? totalScoreSum /. Float.fromInt(totalAttempts) : 0.0;
+
+  // Get prompt iterations from first report
+  let promptIterations =
+    switch (Array.head(reports)) {
+    | Some(firstReport) =>
+      switch (Array.head(firstReport.gradeSummaries)) {
+      | Some(summary) => Array.length(summary.scores)
+      | None => 0
+      }
+    | None => 0
+    };
+
+  // Generate task-specific results
+  let taskResults =
+    reports
+    |> Array.map((report: TaskGradeReport.t) => {
+         let taskId = report.task.task_id;
+         let taskName =
+           String.length(report.task.text) > 100
+             ? String.slice(0, 100, report.task.text) ++ "..."
+             : report.task.text;
+
+         let promptResults =
+           report.gradeSummaries
+           |> Array.map(
+                (
+                  {promptTemplate, scores, averageScore, _}: TaskGradeReport.gradeSummary,
+                ) => {
+                let scoresStr =
+                  scores
+                  |> Array.map(Int.toString)
+                  |> Array.String.intercalate(", ");
+                Printf.sprintf(
+                  "    - **%s**: Average: %.2f, Scores: [%s]",
+                  promptTemplate.name,
+                  averageScore,
+                  scoresStr,
+                );
+              })
+           |> Array.String.intercalate("\n");
+
+         Printf.sprintf(
+           "### Task %d\n\n**Description:** %s\n\n**Results:**\n%s\n\n**Overall Task Average:** %.2f\n",
+           taskId,
+           taskName,
+           promptResults,
+           report.statistics.averageScore,
+         );
+       })
+    |> Array.String.intercalate("\n");
+
+  Printf.sprintf(
+    {|# Evaluation Report - %s
+
+## Summary
+
+- **Total Tasks:** %d
+- **Total Attempts:** %d
+- **Prompt Iterations per Task:** %d
+- **Overall Average Score:** %.2f
+
+## Prompts Used
+
+%s
+
+## Task Results
+
+%s
+
+---
+
+*Generated on %s*
+|},
+    epoch,
+    totalTasks,
+    totalAttempts,
+    promptIterations,
+    overallAverageScore,
+    promptInfo,
+    taskResults,
+    Js.Date.make() |> Js.Date.toISOString,
+  );
 };
+
+/* Write markdown summary to file */
+let writeSummaryMarkdown =
+    (epoch: string, reportPath: string, reports: array(TaskGradeReport.t))
+    : IO.t(unit, Shared.processError) => {
+  let markdownContent = generateMarkdownSummary(reports, epoch);
+
+  Bindings.NodeJs.Fs.writeFileSyncRecursive(
+    reportPath,
+    markdownContent,
+    Bindings.NodeJs.Fs.makeWriteFileOptions(~flag=Write, ()),
+  )
+  |> IO.mapError(e =>
+       `GradingError(
+         "Failed to write markdown summary: "
+         ++ (Js.Exn.message(e) |> Option.getOrElse("Unknown error")),
+       )
+     );
+};
+
+// let processGradingFromFiles =
+//     (inputPath: string, outputPath: string): IO.t(unit, Shared.processError) => {
+//   readCompilationResults(inputPath)
+//   |> IO.map(gradeCompilationResults)
+//   |> IO.flatMap(report => writeGradeReport(outputPath, report))
+//   |> IO.map(_ => {
+//        Printf.printf(
+//          "Grading completed. Results written to: %s\n",
+//          outputPath,
+//        )
+//      });
+// };

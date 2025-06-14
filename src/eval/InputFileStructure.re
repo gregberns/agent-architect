@@ -173,7 +173,8 @@ module EvaluationRun = {
     input_config: InputConfig.t,
     task_paths: array(TaskPaths.t),
     prompt_runs_file_path: string,
-    prompts: array(Shared.PromptTemplate.t) // Loaded prompt templates
+    prompts: array(Shared.PromptTemplate.t), // Loaded prompt templates
+    summary_report_path: string // Path to the evaluation summary markdown file
   };
 
   let make =
@@ -184,6 +185,7 @@ module EvaluationRun = {
         ~task_paths,
         ~prompt_runs_file_path,
         ~prompts,
+        ~summary_report_path,
       ) => {
     epoch,
     base_directory,
@@ -191,6 +193,7 @@ module EvaluationRun = {
     task_paths,
     prompt_runs_file_path,
     prompts,
+    summary_report_path,
   };
 
   let encode = (run: t): Js.Json.t => {
@@ -210,6 +213,7 @@ module EvaluationRun = {
             Array.map(Shared.PromptTemplate.encode, run.prompts),
           ),
         ),
+        ("summary_report_path", Js.Json.string(run.summary_report_path)),
       ]),
     );
   };
@@ -221,7 +225,8 @@ module EvaluationRun = {
     and+ input_config = field("input_config", InputConfig.decode)
     and+ task_paths = field("task_paths", array(TaskPaths.decode))
     and+ prompt_runs_file_path = field("prompt_runs_file_path", string)
-    and+ prompts = field("prompts", array(Shared.PromptTemplate.decode));
+    and+ prompts = field("prompts", array(Shared.PromptTemplate.decode))
+    and+ summary_report_path = field("summary_report_path", string);
     {
       epoch,
       base_directory,
@@ -229,6 +234,7 @@ module EvaluationRun = {
       task_paths,
       prompt_runs_file_path,
       prompts,
+      summary_report_path,
     };
   };
 };
@@ -237,8 +243,19 @@ module EvaluationRun = {
    PATH GENERATION FUNCTIONS
    ============================================================================ */
 
-/* Generate epoch string from current time */
-let generateEpoch = (): string => {
+/* Extract prompt number from prompt file path */
+let extractPromptNumber = (promptFilePath: string): string => {
+  String.splitList(~delimiter="/", promptFilePath)
+  |> List.last
+  |> Option.map(
+       String.replaceEach(~search="prompts_", ~replaceWith="")
+       >> String.replaceEach(~search=".json", ~replaceWith=""),
+     )
+  |> Option.getOrElse("XXX");
+};
+
+/* Generate epoch string from current time and prompt file path */
+let generateEpoch = (promptFilePath: string): string => {
   let now = Js.Date.make();
   let year = Js.Date.getFullYear(now) |> Float.toInt |> string_of_int;
   let month =
@@ -250,8 +267,11 @@ let generateEpoch = (): string => {
   let second =
     Js.Date.getSeconds(now) |> Float.toInt |> Printf.sprintf("%02d");
 
+  let promptNumber = extractPromptNumber(promptFilePath);
+
   Printf.sprintf(
-    "001_%s-%s-%s_%s-%s-%s",
+    "%s_%s-%s-%s_%s-%s-%s",
+    promptNumber,
     year,
     month,
     day,
@@ -300,6 +320,17 @@ let generateRunDefinitionFilePath = (~baseDir, ~epoch): string => {
   Printf.sprintf("%s/inputs/run-def/%s.json", baseDir, epoch);
 };
 
+/* Generate summary report file path */
+let generateSummaryReportFilePath = (~baseDir, ~epoch): string => {
+  let fileName = "evaluation_summary.md";
+  Printf.sprintf(
+    "%s/outputs/test-results-graded/%s/%s",
+    baseDir,
+    epoch,
+    fileName,
+  );
+};
+
 /* ============================================================================
    PROMPT LOADING FUNCTIONS
    ============================================================================ */
@@ -338,7 +369,7 @@ let loadPromptTemplates =
 
 let taskRange = (start_task, end_task) =>
   Int.eq(start_task, end_task)
-    ? [|start_task|] : Int.rangeAsArray(start_task, end_task);
+    ? [|start_task|] : Int.rangeAsArray(start_task, end_task + 1);
 
 /* Generate task paths for a range of tasks */
 let generateTaskPaths =
@@ -361,7 +392,7 @@ let generateTaskPaths =
 /* Generate complete evaluation run structure */
 let generateEvaluationRun =
     (~inputConfig: InputConfig.t): IO.t(EvaluationRun.t, Shared.processError) => {
-  let epoch = generateEpoch();
+  let epoch = generateEpoch(inputConfig.prompt_file_path);
   let taskPaths =
     generateTaskPaths(
       ~baseDir=inputConfig.baseDir,
@@ -370,6 +401,8 @@ let generateEvaluationRun =
     );
   let promptRunsFilePath =
     generatePromptsFilePath(~baseDir=inputConfig.baseDir, ~epoch);
+  let summaryReportPath =
+    generateSummaryReportFilePath(~baseDir=inputConfig.baseDir, ~epoch);
 
   loadPromptTemplates(inputConfig.prompt_file_path)
   |> IO.map(prompts => {
@@ -380,6 +413,7 @@ let generateEvaluationRun =
          ~task_paths=taskPaths,
          ~prompt_runs_file_path=promptRunsFilePath,
          ~prompts,
+         ~summary_report_path=summaryReportPath,
        )
      });
 };
@@ -391,6 +425,7 @@ let generateEvaluationRunWithEpoch =
   let taskPaths =
     generateTaskPaths(~baseDir, ~epoch, ~taskRange=inputConfig.task_range);
   let promptRunsFilePath = generatePromptsFilePath(~baseDir, ~epoch);
+  let summaryReportPath = generateSummaryReportFilePath(~baseDir, ~epoch);
 
   loadPromptTemplates(inputConfig.prompt_file_path)
   |> IO.map(prompts => {
@@ -401,6 +436,7 @@ let generateEvaluationRunWithEpoch =
          ~task_paths=taskPaths,
          ~prompt_runs_file_path=promptRunsFilePath,
          ~prompts,
+         ~summary_report_path=summaryReportPath,
        )
      });
 };
