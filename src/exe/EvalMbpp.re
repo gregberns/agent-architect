@@ -25,12 +25,11 @@ let runDefinition = runDefinitionPath => {
        (
          {
            input_config: {task_list_path: _, prompt_iterations: _, _},
-           task_paths,
+           task_paths: _,
            prompts: _,
            _,
          } as evaluationRun: Eval.InputFileStructure.EvaluationRun.t,
        ) => {
-       Js.log2("Task Paths:", task_paths);
 
        Eval.Digest.DigestUtils.digestEvaluationRun(
          ~modelName="",
@@ -135,19 +134,19 @@ let inputConfig =
     ~task_list_path=
       "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/source-data/mbpp.jsonl",
     ~task_range=
-      Eval.InputFileStructure.TaskRange.make(~start_task=601, ~end_task=603),
+      Eval.InputFileStructure.TaskRange.make(~start_task=601, ~end_task=602),
     ~prompt_file_path=
-      "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/prompts/prompts_002.json",
-    ~prompt_iterations=2,
+      "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/prompts/prompts_005.json",
+    ~prompt_iterations=1,
   );
 
 // =================================================
 
 // generateRunDefinitionUnit(inputConfig);
 
-let epoch = "001_2025-06-13_08-42-34";
+let epoch = "002_2025-06-13_09-39-51";
 
-// runDefinitionUnit(defPath(epoch));
+runDefinitionUnit(defPath(epoch));
 
 // runValidateUnit(defPath(epoch), epoch);
 

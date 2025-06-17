@@ -471,6 +471,139 @@ let generateMarkdownSummary =
     | None => 0
     };
 
+  // Generate per-prompt performance analysis
+  let promptAnalysis =
+    switch (Array.head(reports)) {
+    | Some(firstReport) =>
+      firstReport.gradeSummaries
+      |> Array.map(({promptTemplate, _}: TaskGradeReport.gradeSummary) => {
+           // Collect all scores for this prompt across all tasks
+           let allScoresForPrompt =
+             reports
+             |> Array.flatMap((report: TaskGradeReport.t) =>
+                  report.gradeSummaries
+                  |> Array.filter((summary: TaskGradeReport.gradeSummary) =>
+                       summary.promptTemplate.hash == promptTemplate.hash
+                     )
+                  |> Array.flatMap((summary: TaskGradeReport.gradeSummary) =>
+                       summary.scores
+                     )
+                );
+
+           // Calculate statistics for this prompt
+           let totalAttempts = Array.length(allScoresForPrompt);
+           let totalScore = Array.foldLeft((+), 0, allScoresForPrompt);
+           let averageScore =
+             totalAttempts > 0
+               ? Float.fromInt(totalScore) /. Float.fromInt(totalAttempts)
+               : 0.0;
+
+           // Count success rates
+           let parseFailures =
+             Array.filter(score => score == 0, allScoresForPrompt)
+             |> Array.length;
+           let partialSuccesses =
+             Array.filter(score => score == 1, allScoresForPrompt)
+             |> Array.length;
+           let fullSuccesses =
+             Array.filter(score => score == 2, allScoresForPrompt)
+             |> Array.length;
+
+           let parseFailureRate =
+             Float.fromInt(parseFailures)
+             /. Float.fromInt(totalAttempts)
+             *. 100.0;
+           let partialSuccessRate =
+             Float.fromInt(partialSuccesses)
+             /. Float.fromInt(totalAttempts)
+             *. 100.0;
+           let fullSuccessRate =
+             Float.fromInt(fullSuccesses)
+             /. Float.fromInt(totalAttempts)
+             *. 100.0;
+
+           // Find best and worst performing tasks for this prompt
+           let taskPerformances =
+             reports
+             |> List.fromArray
+             |> List.map((report: TaskGradeReport.t) => {
+                  let promptSummary =
+                    report.gradeSummaries
+                    |> Array.find((summary: TaskGradeReport.gradeSummary) =>
+                         summary.promptTemplate.hash == promptTemplate.hash
+                       );
+                  switch (promptSummary) {
+                  | Some(summary) =>
+                    Some((report.task.task_id, summary.averageScore))
+                  | None => None
+                  };
+                })
+             |> List.mapOption(x => x)
+             |> List.sortBy(((_, scoreA), (_, scoreB)) =>
+                  Float.compare(scoreB, scoreA)
+                )
+             |> List.toArray;
+
+           let bestTask = Array.head(taskPerformances);
+           let worstTask = Array.last(taskPerformances);
+
+           Printf.sprintf(
+             {|### %s (hash: %s)
+
+**Overall Performance:**
+- Average Score: %.2f
+- Total Attempts: %d
+- Parse Failure Rate: %.1f%% (%d failures)
+- Partial Success Rate: %.1f%% (%d partial)
+- Full Success Rate: %.1f%% (%d full)
+
+**Task Performance:**
+- Best Task: %s
+- Worst Task: %s
+
+**Prompt Template:**
+```
+%s
+```
+
+**Analysis Notes:**
+%s|},
+             promptTemplate.name,
+             promptTemplate.hash,
+             averageScore,
+             totalAttempts,
+             parseFailureRate,
+             parseFailures,
+             partialSuccessRate,
+             partialSuccesses,
+             fullSuccessRate,
+             fullSuccesses,
+             switch (bestTask) {
+             | Some((taskId, score)) =>
+               Printf.sprintf("Task %d (%.2f)", taskId, score)
+             | None => "None"
+             },
+             switch (worstTask) {
+             | Some((taskId, score)) =>
+               Printf.sprintf("Task %d (%.2f)", taskId, score)
+             | None => "None"
+             },
+             promptTemplate.prompt,
+             if (parseFailureRate > 50.0) {
+               "HIGH PARSE FAILURE RATE - Consider improving ReasonML syntax guidance";
+             } else if (fullSuccessRate > 70.0) {
+               "STRONG PERFORMANCE - This prompt template works well";
+             } else if (partialSuccessRate > 50.0) {
+               "MODERATE PERFORMANCE - Consider refining logic guidance";
+             } else {
+               "NEEDS IMPROVEMENT - Consider major prompt restructuring";
+             },
+           );
+         })
+      |> Array.String.intercalate("\n\n")
+    | None => "No prompt analysis available"
+    };
+
   // Generate task-specific results
   let taskResults =
     reports
@@ -510,17 +643,30 @@ let generateMarkdownSummary =
        })
     |> Array.String.intercalate("\n");
 
-  Printf.sprintf(
-    {|# Evaluation Report - %s
-
-## Summary
+  let summary =
+    Printf.sprintf(
+      {|## Summary
 
 - **Total Tasks:** %d
 - **Total Attempts:** %d
 - **Prompt Iterations per Task:** %d
-- **Overall Average Score:** %.2f
+- **Overall Average Score:** %.2f|},
+      totalTasks,
+      totalAttempts,
+      promptIterations,
+      overallAverageScore,
+    );
+
+  Printf.sprintf(
+    {|# Evaluation Report - %s
+
+%s
 
 ## Prompts Used
+
+%s
+
+## Prompt Performance Analysis
 
 %s
 
@@ -533,11 +679,9 @@ let generateMarkdownSummary =
 *Generated on %s*
 |},
     epoch,
-    totalTasks,
-    totalAttempts,
-    promptIterations,
-    overallAverageScore,
+    summary,
     promptInfo,
+    promptAnalysis,
     taskResults,
     Js.Date.make() |> Js.Date.toISOString,
   );

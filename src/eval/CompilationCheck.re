@@ -53,9 +53,7 @@ module Build = {
 (using melange 0.1)|};
 
   let buildCommand = workDir => {j|cd $workDir && dune build --root=. --build-dir=./_build|j};
-  let tryRun = (~compilePath, ~moduleName, compileFile) => {
-    Js.log3("  Build - Paths: ", compilePath, compileFile);
-    Js.log2("  Build - Module Name: ", moduleName);
+  let tryRun = (~compilePath, ~moduleName as _, _compileFile) => {
     let ( let* ) = IO.bind;
 
     let duneFilePath = compilePath ++ "/dune";
@@ -70,9 +68,9 @@ module Build = {
 
     buildCommand(compilePath)
     |> tryRun
-    |> IO.tap(Js.log2("$$$$$$$$$$$$$$$$$$$ "))
+    // |> IO.tap(Js.log2("$$$$$$$$$$$$$$$$$$$ "))
     |> IO.mapError(() => RJs.Exn.make("Unknown error in Build.tryRun"))
-    |> IO.tapError(_ => Js.log2("  Compile - Build Error: ", compileFile));
+    // |> IO.tapError(_ => Js.log2("  Compile - Build Error: ", compileFile));
     // Result.Ok("thing") |> IO.pure;
   };
   // buildCommand |> tryRun;
@@ -82,15 +80,15 @@ module Build = {
 module Test = {
   // data/evaluation/outputs/scratch/001_2025-06-11_08-43-31/task_601/T_1fcup3a_1_1/_build/default/example/Task.js
   let buildCommand = (compilePath, jsFilePath) => {j|cd $compilePath && node $jsFilePath|j};
-  let tryRun = (~compilePath, ~moduleName, compileFile) => {
-    Js.log3("  Test - Paths: ", compilePath, compileFile);
-    Js.log2("  Test - Module Name: ", moduleName);
+  let tryRun = (~compilePath, ~moduleName as _, _compileFile) => {
+    // Js.log3("  Test - Paths: ", compilePath, compileFile);
+    // Js.log2("  Test - Module Name: ", moduleName);
 
     let jsFilePath = compilePath ++ "/_build/default/example/Task.js";
 
     buildCommand(compilePath, jsFilePath)
     |> tryRun
-    |> IO.tap(Js.log2("$$$$$$$$$$$$$$$$$$$ "))
+    // |> IO.tap(Js.log2("$$$$$$$$$$$$$$$$$$$ "))
     |> IO.mapError(() => RJs.Exn.make("Unknown error in Build.tryRun"));
   };
 };

@@ -148,26 +148,6 @@ let invokeModel =
   |> IO.map(({text}: ModelTypes.AIMessageChunk.t) => text)
   |> IO.mapError(Js.Exn.message >> Option.getOrElse("Unknown model error"));
 
-/* Generate a unique hash for a prompt template */
-
-/* Default prompt templates for code evaluation */
-// module PromptTemplates = {
-//   let basicCodeGeneration: promptTemplate = {
-//     name: "basic_code_generation",
-//     template: "You are an expert ReasonML programmer, and here is your task: {problem} Your ReasonML code should pass these tests:\n\n{tests}\n[BEGIN]\n{code}\n[DONE]",
-//   };
-
-//   let codeWithTests: promptTemplate = {
-//     name: "code_with_tests",
-//     template: "You are learning ReasonML, and here is your task: {problem} Write ReasonML code to pass these tests:\n\n{tests}\n[BEGIN]\n{code}\n[DONE]",
-//   };
-
-//   let defaultTemplates: array(promptTemplate) = [|
-//     basicCodeGeneration,
-//     codeWithTests,
-//   |];
-// };
-
 /* Generate prompt from template and task */
 let generatePrompt =
     (template: Shared.PromptTemplate.t, task: evaluationTask)
@@ -259,31 +239,6 @@ let processSingleTestWithK =
          total_invocations: totalInvocations,
        };
      });
-};
-
-/* Encode digest result to JSON using shared encoder for evaluation task */
-module EncodeDigest = {
-  // let encodePromptResult = (promptResult: promptResult): Js.Json.t => {
-  //   Js.Json.object_(
-  //     Js.Dict.fromList([
-  //       ("template_name", Js.Json.string(promptResult.template_name)),
-  //       ("template_hash", Js.Json.string(promptResult.template_hash)),
-  //       ("prompt", Js.Json.string(promptResult.prompt)),
-  //       (
-  //         "responses",
-  //         Js.Json.array(
-  //           Array.map(encodeModelResponse, promptResult.responses),
-  //         ),
-  //       ),
-  //       (
-  //         "total_invocations",
-  //         Js.Json.number(Float.fromInt(promptResult.total_invocations)),
-  //       ),
-  //     ]),
-  //   );
-  // };
-  // Use shared encoder for evaluation task
-  // let encodeEvaluationTask = Shared.EvaluationTask.encode;
 };
 
 /* Write digest result to file using shared JSONL operations */
