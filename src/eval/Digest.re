@@ -127,7 +127,7 @@ let googleApiKey =
 let gemini_2_0_flash = "gemini-2.0-flash";
 
 module LoadedGeminiModel =
-  Model.Gemini.Model({
+  Model.Providers.Google.Gemini({
     let model = gemini_2_0_flash;
     let apiKey = googleApiKey;
     let temperature = 1.0;
@@ -137,16 +137,21 @@ module MyChat = Chat(LoadedGeminiModel);
 
 /* Model invoke function using loaded Gemini model */
 let invokeModel =
-    (~prompt: string, ~modelName as _: string): IO.t(string, string) =>
-  MyChat.init()
-  |> IO.flatMap(
-       MyChat.sendMessage(
-         _,
+    (~prompt: string, ~model: (module Model.Chat.CHAT)): IO.t(string, string) => {
+  module Model = (val model);
+
+  Model.init()
+  |> IO.flatMap(m =>
+       Model.sendMessage(
+         m,
          ModelTypes.ModelInput.make1(ModelTypes.Message.makeUser(prompt)),
-       ),
+       )
      )
   |> IO.map(({text}: ModelTypes.AIMessageChunk.t) => text)
-  |> IO.mapError(Js.Exn.message >> Option.getOrElse("Unknown model error"));
+  |> IO.mapError((err: Model.err) =>
+       err |> Model.errorToString |> Option.getOrElse("Unknown model error")
+     );
+};
 
 /* Generate prompt from template and task */
 let generatePrompt =
@@ -175,9 +180,9 @@ let generatePrompt =
 /* Process single prompt k times */
 let processPromptKTimes =
     (
+      ~model: (module Model.Chat.CHAT),
       task: evaluationTask,
       template: Shared.PromptTemplate.t,
-      modelName: string,
       k: int,
     )
     : IO.t(PromptResult.t, digestError) => {
@@ -185,13 +190,13 @@ let processPromptKTimes =
   | Result.Ok(prompt) =>
     Int.rangeAsList(0, k)
     |> List.IO.traverse(invocationIndex => {
-         invokeModel(~prompt, ~modelName)
+         invokeModel(~prompt, ~model)
          |> IO.mapError(error => `ModelInvokeError(error))
          |> IO.map((response): ModelResponse.t => {
               {
                 prompt,
                 response,
-                model_name: modelName,
+                model_name: "",
                 timestamp: Js.Date.now(),
                 invocation_index: invocationIndex,
               }
@@ -213,9 +218,9 @@ let processPromptKTimes =
 /* Process single test with multiple prompt templates, each run k times */
 let processSingleTestWithK =
     (
+      ~model: (module Model.Chat.CHAT),
       task: evaluationTask,
       prompts: array(Shared.PromptTemplate.t),
-      modelName: string,
       promptIterations: int,
     )
     : IO.t(DigestResult.t, digestError) => {
@@ -224,7 +229,12 @@ let processSingleTestWithK =
   // Map over prompt list and traverse over IO operations
   List.IO.traverse(
     template =>
-      processPromptKTimes(task, template, modelName, promptIterations),
+      processPromptKTimes(
+        ~model: (module Model.Chat.CHAT),
+        task,
+        template,
+        promptIterations,
+      ),
     Array.toList(prompts),
   )
   |> IO.map((promptResultList): DigestResult.t => {
@@ -257,8 +267,8 @@ let writeDigestResult =
 /* Main digest processing function with k parameter */
 let digestSingleTest =
     (
+      ~model: (module Model.Chat.CHAT),
       ~prompts: array(Shared.PromptTemplate.t),
-      ~modelName: string,
       ~outputPath: string,
       ~promptIterations: int=1, // Number of times to run each prompt
       task: evaluationTask,
@@ -272,7 +282,7 @@ let digestSingleTest =
     ++ (promptIterations |> Int.toString)
     ++ ")",
   );
-  processSingleTestWithK(task, prompts, modelName, promptIterations)
+  processSingleTestWithK(~model, task, prompts, promptIterations)
   |> IO.flatMap(result => {
        writeDigestResult(result, outputPath) |> IO.map(_ => result)
      });
@@ -281,8 +291,8 @@ let digestSingleTest =
 /* Batch processing functions with k parameter */
 let digestMultipleTests =
     (
+      ~model: (module Model.Chat.CHAT),
       ~prompts: array(Shared.PromptTemplate.t),
-      ~modelName: string,
       ~outputPath: string,
       ~batchSize: int=5,
       ~promptIterations: int=1, // Number of times to run each prompt
@@ -298,8 +308,8 @@ let digestMultipleTests =
       List.IO.traverse(
         task =>
           digestSingleTest(
+            ~model,
             ~prompts,
-            ~modelName,
             ~outputPath,
             ~promptIterations,
             task,
@@ -317,7 +327,7 @@ let digestMultipleTests =
 module DigestUtils = {
   let loadAndDigestJsonl =
       (
-        ~modelName: string,
+        ~model: (module Model.Chat.CHAT),
         ~inputPath: string,
         ~prompts,
         ~outputPath: string,
@@ -330,7 +340,7 @@ module DigestUtils = {
     |> IO.tap(_ => Js.log("############ Loaded Data"))
     |> IO.flatMap(tasks => {
          digestMultipleTests(
-           ~modelName,
+           ~model,
            ~outputPath,
            ~prompts,
            ~promptIterations,
@@ -356,7 +366,7 @@ module DigestUtils = {
 
   let digestSingleTaskById =
       (
-        ~modelName,
+        ~model: (module Model.Chat.CHAT),
         ~prompts,
         ~taskListPath: string,
         ~taskId: int,
@@ -372,7 +382,7 @@ module DigestUtils = {
          Shared.EvaluationTask.getTaskById(tasks, taskId)
          |> Option.fold("Task Not Found" |> IO.throw, task =>
               digestSingleTest(
-                ~modelName,
+                ~model,
                 ~prompts,
                 ~outputPath,
                 ~promptIterations,
@@ -426,7 +436,7 @@ module DigestUtils = {
 
   let digestEvaluationRun =
       (
-        ~modelName,
+        ~model: (module Model.Chat.CHAT),
         {
           input_config: {task_list_path, prompt_iterations, _},
           task_paths,
@@ -449,7 +459,7 @@ module DigestUtils = {
            ) => {
            // let outputPath = outputPathGenerator(task_id);
            digestSingleTest(
-             ~modelName,
+             ~model,
              ~outputPath=runs_file_path,
              ~prompts,
              ~promptIterations=prompt_iterations,

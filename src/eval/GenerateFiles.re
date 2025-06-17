@@ -40,12 +40,12 @@ module CodeExtraction = {
     // let beginMarker = "[BEGIN]";
     // let endMarker = "[DONE]";
     let reasonmlBlock = "```reasonml";
-    // let reasonBlock = "```reason";
+    let reasonBlock = "```reason";
     let genericBlock = "```";
     response
     // |> betweenMarkers(~beginMarker, ~endMarker)
     |> betweenMarkers(~beginMarker=reasonmlBlock, ~endMarker=genericBlock)
-    // |> betweenMarkers(~beginMarker=reasonBlock, ~endMarker=genericBlock)
+    |> betweenMarkers(~beginMarker=reasonBlock, ~endMarker=genericBlock)
     // This will be probematic
     // |> betweenMarkers(~beginMarker=genericBlock, ~endMarker=genericBlock)
     |> String.trim;

@@ -72,7 +72,7 @@ let googleApiKey =
 let gemini_2_0_flash = "gemini-2.0-flash";
 
 module LoadedGeminiModel =
-  Model.Gemini.Model({
+  Model.Providers.Google.Gemini({
     let model = gemini_2_0_flash;
     let apiKey = googleApiKey;
     let temperature = 1.0;

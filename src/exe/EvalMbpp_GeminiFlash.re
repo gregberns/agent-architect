@@ -20,21 +20,30 @@ let generateRunDefinitionUnit = inputConfig => {
 let runDefinition = runDefinitionPath => {
   Js.log("####### START - Run Definition #######");
 
-  let apiKey =
-    Bindings.NodeJs.Process.getEnvWithDefault(
-      "OPENROUTER_API_KEY",
-      "NOT VALID",
-    );
-  let model = "qwen/qwen-2.5-coder-32b-instruct";
+  /* Model integration setup */
+  module Chat = (Model: ModelTypes.Model.MODEL) => {
+    type t = Model.t;
+    type err = Js.Exn.t;
+    let init = () => Model.make();
 
-  module OpenRouterModel =
-    Model.Providers.OpenRouter({
-      let model = model;
-      let apiKey = apiKey;
+    let sendMessage = (model, message: ModelTypes.ModelInput.t) =>
+      Model.invoke(model, message);
+
+    let errorToString: err => option(string) = Js.Exn.message;
+  };
+
+  let googleApiKey =
+    Bindings.NodeJs.Process.getEnvWithDefault("GOOGLE_API_KEY", "NOT VALID");
+  let gemini_2_0_flash = "gemini-2.0-flash";
+
+  module LoadedGeminiModel =
+    Model.Providers.Google.Gemini({
+      let model = gemini_2_0_flash;
+      let apiKey = googleApiKey;
       let temperature = 1.0;
     });
 
-  module MyChat: Model.Chat.CHAT = Model.Chat.Chat(OpenRouterModel);
+  module MyChat: Model.Chat.CHAT = Chat(LoadedGeminiModel);
 
   Eval.InputFileStructure.loadEvaluationRun(runDefinitionPath)
   |> IO.flatMap(
@@ -149,10 +158,10 @@ let inputConfig =
     ~task_list_path=
       "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/source-data/mbpp.jsonl",
     ~task_range=
-      Eval.InputFileStructure.TaskRange.make(~start_task=601, ~end_task=620),
+      Eval.InputFileStructure.TaskRange.make(~start_task=601, ~end_task=602),
     ~prompt_file_path=
-      "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/prompts/prompts_003.json",
-    ~prompt_iterations=3,
+      "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/prompts/prompts_005.json",
+    ~prompt_iterations=1,
   );
 
 // =================================================
@@ -161,7 +170,7 @@ let inputConfig =
 
 let epoch = "002_2025-06-13_09-39-51";
 
-// runDefinitionUnit(defPath(epoch));
+runDefinitionUnit(defPath(epoch));
 
 // runValidateUnit(defPath(epoch), epoch);
 

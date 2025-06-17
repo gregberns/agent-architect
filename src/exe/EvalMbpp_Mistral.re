@@ -21,20 +21,18 @@ let runDefinition = runDefinitionPath => {
   Js.log("####### START - Run Definition #######");
 
   let apiKey =
-    Bindings.NodeJs.Process.getEnvWithDefault(
-      "OPENROUTER_API_KEY",
-      "NOT VALID",
-    );
-  let model = "qwen/qwen-2.5-coder-32b-instruct";
+    Bindings.NodeJs.Process.getEnvWithDefault("MISTRAL_API_KEY", "NOT VALID");
+  // let mistral_model = "codestral-latest";
+  let mistral_model = "devstral-small-2505";
 
-  module OpenRouterModel =
-    Model.Providers.OpenRouter({
-      let model = model;
+  module MistralModel =
+    Model.Providers.Mistral({
+      let model = mistral_model;
       let apiKey = apiKey;
       let temperature = 1.0;
     });
 
-  module MyChat: Model.Chat.CHAT = Model.Chat.Chat(OpenRouterModel);
+  module MyChat: Model.Chat.CHAT = Model.Chat.Chat(MistralModel);
 
   Eval.InputFileStructure.loadEvaluationRun(runDefinitionPath)
   |> IO.flatMap(

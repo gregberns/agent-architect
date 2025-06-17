@@ -43,7 +43,7 @@ module Temperature = {
 type model;
 
 /* Provider-specific configuration types */
-type googleConfig = {
+type providerConfig = {
   [@mel.as "model"]
   model: string,
   [@mel.as "temperature"]
@@ -52,14 +52,14 @@ type googleConfig = {
   apiKey: ApiKey.t,
 };
 
-type anthropicConfig = {
-  [@mel.as "model"]
-  model: string,
-  [@mel.as "temperature"]
-  temperature: Temperature.t,
-  [@mel.as "anthropicApiKey"]
-  anthropicApiKey: ApiKey.t,
-};
+// type anthropicConfig = {
+//   [@mel.as "model"]
+//   model: string,
+//   [@mel.as "temperature"]
+//   temperature: Temperature.t,
+//   [@mel.as "anthropicApiKey"]
+//   anthropicApiKey: ApiKey.t,
+// };
 
 /* Response type */
 type chatResponse = {
@@ -145,11 +145,14 @@ module Raw = {
 
   /* Model constructors - these are pure, no apostrophe needed */
   [@mel.module "@langchain/google-genai"] [@mel.new]
-  external createChatGoogleGenerativeAI: googleConfig => model =
+  external createChatGoogleGenerativeAI: providerConfig => model =
     "ChatGoogleGenerativeAI";
 
   [@mel.module "@langchain/anthropic"] [@mel.new]
-  external createChatAnthropic: anthropicConfig => model = "ChatAnthropic";
+  external createChatAnthropic: providerConfig => model = "ChatAnthropic";
+
+  [@mel.module "@langchain/mistralai"] [@mel.new]
+  external createChatMistralAI: providerConfig => model = "ChatMistralAI";
 
   /* Invoke methods - these are effectful, need apostrophe suffix */
   [@mel.send]
@@ -234,6 +237,21 @@ let createSystemMessage = (content: string): systemMessage =>
   Raw.createSystemMessage(content);
 
 /* Model constructors - pure functions, no IO needed */
+
+let createAnthropicModel =
+    (
+      ~model: string,
+      ~apiKey: ApiKey.t,
+      ~temperature: option(Temperature.t)=Some(0.0),
+      (),
+    )
+    : model =>
+  Raw.createChatAnthropic({
+    model,
+    temperature,
+    apiKey,
+  });
+
 let createGoogleModel =
     (
       ~model: string,
@@ -248,18 +266,18 @@ let createGoogleModel =
     apiKey,
   });
 
-let createAnthropicModel =
+let createMistralModel =
     (
       ~model: string,
-      ~anthropicApiKey: ApiKey.t,
-      ~temperature: Temperature.t=0.0,
+      ~apiKey: ApiKey.t,
+      ~temperature: option(Temperature.t)=Some(0.0),
       (),
     )
     : model =>
-  Raw.createChatAnthropic({
+  Raw.createChatMistralAI({
     model,
     temperature,
-    anthropicApiKey,
+    apiKey,
   });
 
 /* Invoke methods - effectful operations wrapped in IO */
