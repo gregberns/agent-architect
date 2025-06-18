@@ -15,12 +15,21 @@ type messageObject = {
   content: string,
 };
 
-type chatResponse = {
+type message = {
   [@mel.as "content"]
   content: string,
   [@mel.as "role"]
-  role: option(string),
-  // text: string,
+  role: string,
+};
+
+type choice = {
+  [@mel.as "message"]
+  message,
+};
+
+type chatResponse = {
+  [@mel.as "choices"]
+  choices: array(choice),
 };
 
 type model;
@@ -29,43 +38,63 @@ type model;
 type providerConfig = {
   [@mel.as "baseURL"]
   baseUrl: string,
-  [@mel.as "model"]
-  model: string,
-  [@mel.as "temperature"]
-  temperature: option(Temperature.t),
   [@mel.as "apiKey"]
   apiKey: ApiKey.t,
+  [@mel.as "defaultHeaders"]
+  defaultHeaders: option(Js.Dict.t(string)),
+};
+
+type completionRequest = {
+  [@mel.as "model"]
+  model: string,
+  [@mel.as "messages"]
+  messages: array(messageObject),
+  [@mel.as "temperature"]
+  temperature: option(Temperature.t),
 };
 
 module Raw = {
   [@mel.module "openai"] [@mel.new]
   external createModel: providerConfig => model = "OpenAI";
 
+  [@mel.get] external chat: model => 'a = "chat";
+
+  [@mel.get] external completions: 'a => 'b = "completions";
+
   [@mel.send]
-  external invokeWithMessageObjects':
-    (model, Js.Array.t(messageObject)) => Js.Promise.t(chatResponse) =
-    "invoke";
+  external create: ('b, completionRequest) => Js.Promise.t(chatResponse) =
+    "create";
 };
 
 let createModel =
     (
       ~baseUrl: string,
-      ~model: string,
       ~apiKey: ApiKey.t,
-      ~temperature: option(Temperature.t)=Some(0.0),
+      ~defaultHeaders: option(Js.Dict.t(string))=None,
       (),
     )
     : model =>
   Raw.createModel({
     baseUrl,
-    model,
-    temperature,
     apiKey,
+    defaultHeaders,
   });
 
 let invokeWithMessageObjects =
-    (model: model, messages: array(messageObject))
+    (
+      ~modelName: string,
+      ~messages: array(messageObject),
+      ~temperature: option(Temperature.t)=Some(0.0),
+      model: model,
+    )
     : IO.t(chatResponse, Js.Exn.t) =>
   Utils.IOUtils.fromPromiseWithJsExn(() =>
-    Raw.invokeWithMessageObjects'(model, messages)
+    Raw.create(
+      Raw.completions(Raw.chat(model)),
+      {
+        model: modelName,
+        messages,
+        temperature,
+      },
+    )
   );

@@ -281,27 +281,6 @@ module TaskGradeReport = {
   };
 };
 
-// let readCompilationResults =
-//     (filePath: string): IO.t(Shared.CompilationResults.t, string) => {
-//   Shared.FileOps.readFileContents(filePath)
-//   |> IO.mapError(error => `FileReadError(error))
-//   |> IO.flatMap(content => {
-//        switch (Utils.JsonUtils.parseSafe(content)) {
-//        | Some(_json) =>
-//          // Note: We need to implement a decoder for CompilationResults.t
-//          // For now, we'll need to handle this manually or extend Shared.re
-//          IO.throw("JSON decoding for CompilationResults not yet implemented")
-//        | None => IO.throw("Invalid JSON format in file: " ++ filePath)
-//        }
-//      });
-// };
-
-// type x = {
-//   promptHash: string,
-//   promptTemplate: Shared.PromptTemplate.t,
-//   scoreValues: array(int),
-// };
-
 let gradeCompilationResults =
     (compilationResults: Shared.CompilationResults.t): TaskGradeReport.t => {
   let gradeResults =
@@ -367,9 +346,6 @@ let gradeCompilationResults =
     compilationResults.processing_time,
   );
 };
-
-// let gradeFromFile = (filePath: string): IO.t(TaskGradeReport.t, string) =>
-//   ;
 
 let writeGradeReport =
     (filePath: string, report: TaskGradeReport.t)
@@ -490,6 +466,17 @@ let generateMarkdownSummary =
                      )
                 );
 
+           // Collect all grade results for this prompt across all tasks
+           let allGradeResultsForPrompt =
+             reports
+             |> Array.flatMap((report: TaskGradeReport.t) =>
+                  report.gradeResults
+                  |> Array.filter((gradeResult: GradeResult.t) =>
+                       gradeResult.extractedCode.promptTemplate.hash
+                       == promptTemplate.hash
+                     )
+                );
+
            // Calculate statistics for this prompt
            let totalAttempts = Array.length(allScoresForPrompt);
            let totalScore = Array.foldLeft((+), 0, allScoresForPrompt);
@@ -508,6 +495,59 @@ let generateMarkdownSummary =
            let fullSuccesses =
              Array.filter(score => score == 2, allScoresForPrompt)
              |> Array.length;
+
+           let formatErrorList =
+             Array.map(String.concat("\t* "))
+             >> Array.String.intercalate("\n");
+
+           // Aggregate errors by type
+           let allParseErrors: string =
+             allGradeResultsForPrompt
+             |> Array.flatMap((gradeResult: GradeResult.t) =>
+                  gradeResult.errors.parseErrors |> List.toArray
+                )
+             |> formatErrorList;
+
+           let allCompileErrors =
+             allGradeResultsForPrompt
+             |> Array.flatMap((gradeResult: GradeResult.t) =>
+                  gradeResult.errors.compileErrors |> List.toArray
+                )
+             |> formatErrorList;
+
+           let allRuntimeErrors =
+             allGradeResultsForPrompt
+             |> Array.flatMap((gradeResult: GradeResult.t) =>
+                  gradeResult.errors.runtimeErrors |> List.toArray
+                )
+             |> formatErrorList;
+
+           let allTestErrors =
+             allGradeResultsForPrompt
+             |> Array.flatMap((gradeResult: GradeResult.t) =>
+                  gradeResult.errors.testErrors |> List.toArray
+                )
+             |> formatErrorList;
+
+           let errorMessageBlock =
+             Printf.sprintf(
+               {|**Parse Errors:**
+%s
+
+**Compile Errors:**
+%s
+
+**Runtime Errors:**
+%s
+
+**Test Errors:**
+%s
+|},
+               allParseErrors,
+               allCompileErrors,
+               allRuntimeErrors,
+               allTestErrors,
+             );
 
            let parseFailureRate =
              Float.fromInt(parseFailures)
@@ -561,13 +601,17 @@ let generateMarkdownSummary =
 - Best Task: %s
 - Worst Task: %s
 
+**Analysis Notes:**
+%s
+
+#### Error Messages
+%s
+
 **Prompt Template:**
 ```
 %s
 ```
-
-**Analysis Notes:**
-%s|},
+|},
              promptTemplate.name,
              promptTemplate.hash,
              averageScore,
@@ -588,7 +632,6 @@ let generateMarkdownSummary =
                Printf.sprintf("Task %d (%.2f)", taskId, score)
              | None => "None"
              },
-             promptTemplate.prompt,
              if (parseFailureRate > 50.0) {
                "HIGH PARSE FAILURE RATE - Consider improving ReasonML syntax guidance";
              } else if (fullSuccessRate > 70.0) {
@@ -598,6 +641,8 @@ let generateMarkdownSummary =
              } else {
                "NEEDS IMPROVEMENT - Consider major prompt restructuring";
              },
+             errorMessageBlock,
+             promptTemplate.prompt,
            );
          })
       |> Array.String.intercalate("\n\n")

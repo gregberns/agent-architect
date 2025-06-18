@@ -76,6 +76,7 @@ module Mistral =
     role,
     content,
   };
+
   let mapResponse =
       ({content, _}: Bindings.LangChain.chatResponse)
       : ModelTypes.AIMessageChunk.t => {
@@ -107,12 +108,12 @@ module OpenRouter =
   let make = () =>
     Bindings.OpenRouter.createModel(
       ~baseUrl,
-      ~model=Config.model,
+      // ~model=Config.model,
       ~apiKey=Config.apiKey,
-      ~temperature=
-        Config.temperature
-        |> Bindings.OpenRouter.Temperature.make
-        |> Option.pure,
+      // ~temperature=
+      //   Config.temperature
+      //   |> Bindings.OpenRouter.Temperature.make
+      //   |> Option.pure,
       (),
     )
     |> IO.pure;
@@ -125,15 +126,26 @@ module OpenRouter =
   };
 
   let mapResponse =
-      ({content, _}: Bindings.OpenRouter.chatResponse)
+      ({choices, _}: Bindings.OpenRouter.chatResponse)
       : ModelTypes.AIMessageChunk.t => {
-    text: content,
+    text:
+      choices
+      |> Array.head
+      |> Option.map(({message: {content, _}}: Bindings.OpenRouter.choice) =>
+           content
+         )
+      |> Option.getOrElse(""),
   };
 
   let invoke = (model: t, {messages}: ModelTypes.ModelInput.t) =>
     Bindings.OpenRouter.invokeWithMessageObjects(
+      ~modelName=Config.model,
+      ~messages=messages |> List.toArray |> Array.map(mapMessage),
+      ~temperature=
+        Config.temperature
+        |> Bindings.OpenRouter.Temperature.make
+        |> Option.pure,
       model,
-      messages |> List.toArray |> Array.map(mapMessage),
     )
     |> IO.map(mapResponse);
 };
