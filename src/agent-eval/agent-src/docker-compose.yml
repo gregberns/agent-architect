@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-eval-${TASK_ID:-default}
+    env_file:
+      - .env
+    volumes:
+      # Mount specific task workspace directory - use TASK_ID environment variable
+      - ../workspaces/${TASK_ID:-task-001}:/app/workspace
+      # Mount logs to task output directory
+      - ../workspaces/${TASK_ID:-task-001}/output:/app/logs
+    # Remove the tty and stdin_open since this is likely a batch process
+    # tty: true
+    # stdin_open: true
+    # Optional: set restart policy
+    restart: "no"
