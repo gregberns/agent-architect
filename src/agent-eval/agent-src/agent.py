@@ -600,13 +600,6 @@ def process_streaming_response(stream, stream_name="response"):
     tool_calls = []
     
     for chunk in stream:
-        # Debug: Print first chunk to see structure
-        if not reasoning_started and not content:
-            console.print(f"[dim]First chunk structure: {type(chunk)}[/dim]")
-            if hasattr(chunk, '__dict__'):
-                chunk_attrs = [attr for attr in dir(chunk) if not attr.startswith('_')]
-                console.print(f"[dim]Chunk attributes: {chunk_attrs}[/dim]")
-        
         # Handle reasoning content if available (DeepSeek-specific)
         if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
             if not reasoning_started:
@@ -761,39 +754,12 @@ def stream_openai_response(user_message: str):
             console.print(f"\n[bold bright_cyan]🔄 Round {round_number}/{max_rounds}[/bold bright_cyan]")
             
             # Create API call
-            console.print(f"[dim]Making API call to model: {MODEL_NAME}[/dim]")
-            console.print(f"[dim]Number of tools defined: {len(tools)}[/dim]")
-            
-            # First try to get provider info with a non-streaming request
-            try:
-                # Quick non-streaming test to see response headers
-                test_response = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[{"role": "user", "content": "Hello"}],
-                    max_tokens=1
-                )
-                # Check if response has any provider information
-                if hasattr(test_response, '_response') and hasattr(test_response._response, 'headers'):
-                    headers = dict(test_response._response.headers)
-                    console.print(f"[dim]Response headers: {headers}[/dim]")
-                    for key, value in headers.items():
-                        if 'provider' in key.lower() or 'x-' in key.lower():
-                            console.print(f"[cyan]Header {key}: {value}[/cyan]")
-            except Exception as header_e:
-                console.print(f"[yellow]Could not get provider info: {str(header_e)}[/yellow]")
-            
-            try:
-                stream = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=conversation_history,
-                    tools=tools,
-                    stream=True
-                )
-            except Exception as e:
-                console.print(f"[bold red]API Error Details:[/bold red]")
-                console.print(f"[red]Model: {MODEL_NAME}[/red]")
-                console.print(f"[red]Error: {str(e)}[/red]")
-                raise e
+            stream = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=conversation_history,
+                tools=tools,
+                stream=True
+            )
             
             # Process the streaming response
             content, tool_calls = process_streaming_response(stream, f"round-{round_number}")
