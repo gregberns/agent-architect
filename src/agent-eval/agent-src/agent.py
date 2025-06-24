@@ -8,6 +8,7 @@ from textwrap import dedent
 from typing import List, Dict, Any, Optional
 # 
 from openai import OpenAI
+from openai.types.chat.chat_completion_chunk import ChatCompletionChunk
 # 
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -636,8 +637,12 @@ def process_streaming_response(stream, stream_name="response"):
                         if tool_call_delta.function.arguments:
                             tool_calls[tool_call_delta.index]["function"]["arguments"] += tool_call_delta.function.arguments
     
+    
+        elif isinstance(chunk, ChatCompletionChunk):
+            console.print(f"   ChatComplete {stream_name}")
+
         else:
-            console.print(f"  ELSE>> {stream_name} chunk: {chunk}")
+            console.print(f"  ELSE>> {stream_name}. ClassName: {chunk.__class__.__name__}, Namespace: {chunk.__class__.__module__}, delta: {chunk.choices[0].delta}   chunk: {chunk}")
 
     console.print(f"\n>> {stream_name} stream complete")
     console.print(f"   - Content length: {len(content)}")
