@@ -1,0 +1,109 @@
+{
+  "jobs": {
+    "999f42aa-da84-48d7-b5ca-f25dbc5ae691": {
+      "id": "999f42aa-da84-48d7-b5ca-f25dbc5ae691",
+      "job_type": "evaluate_task",
+      "status": "completed",
+      "parameters": {
+        "epoch": "epoch-001",
+        "task": "task-001"
+      },
+      "created_at": "2025-06-24T08:06:53.095757",
+      "started_at": "2025-06-24T08:06:53.096919",
+      "completed_at": "2025-06-24T08:06:53.097154",
+      "result": {
+        "success": true,
+        "output": "Test completion",
+        "error": "",
+        "execution_time": 0.0,
+        "artifacts": {}
+      },
+      "retry_count": 0,
+      "max_retries": 3,
+      "worker_id": "test-worker"
+    },
+    "feabb59d-e684-47e9-9fa9-e06901df4ee9": {
+      "id": "feabb59d-e684-47e9-9fa9-e06901df4ee9",
+      "job_type": "evaluate_task",
+      "status": "pending",
+      "parameters": {
+        "epoch": "epoch-001",
+        "task": "task-001"
+      },
+      "created_at": "2025-06-24T08:06:53.096192",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "worker_id": null
+    },
+    "88212744-9e0a-4246-98cb-c852dc3d4db2": {
+      "id": "88212744-9e0a-4246-98cb-c852dc3d4db2",
+      "job_type": "evaluate_task",
+      "status": "pending",
+      "parameters": {
+        "epoch": "epoch-001",
+        "task": "task-002"
+      },
+      "created_at": "2025-06-24T08:06:53.096451",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "worker_id": null
+    },
+    "047966f5-f5be-4cd8-85f0-580d03d627a8": {
+      "id": "047966f5-f5be-4cd8-85f0-580d03d627a8",
+      "job_type": "compile_check",
+      "status": "pending",
+      "parameters": {
+        "epoch": "epoch-001",
+        "task": "task-001"
+      },
+      "created_at": "2025-06-24T08:06:53.096675",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
+      "retry_count": 0,
+      "max_retries": 3,
+      "worker_id": null
+    },
+    "a448915b-8638-4be7-8542-806c4c16e3e6": {
+      "id": "a448915b-8638-4be7-8542-806c4c16e3e6",
+      "job_type": "evaluate_task",
+      "status": "pending",
+      "parameters": {
+        "epoch": "epoch-001",
+        "task": "task-001",
+        "evaluation_run": true
+      },
+      "created_at": "2025-06-24T08:20:42.496311",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
+      "retry_count": 0,
+      "max_retries": 2,
+      "worker_id": null
+    },
+    "408182a9-5eb9-482b-923f-8b656b31b808": {
+      "id": "408182a9-5eb9-482b-923f-8b656b31b808",
+      "job_type": "evaluate_task",
+      "status": "pending",
+      "parameters": {
+        "epoch": "epoch-001",
+        "task": "task-002",
+        "evaluation_run": true
+      },
+      "created_at": "2025-06-24T08:20:42.496797",
+      "started_at": null,
+      "completed_at": null,
+      "result": null,
+      "retry_count": 0,
+      "max_retries": 2,
+      "worker_id": null
+    }
+  },
+  "saved_at": "2025-06-24T08:20:42.496857"
+}

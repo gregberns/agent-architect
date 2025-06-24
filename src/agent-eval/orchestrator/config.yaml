@@ -1,0 +1,24 @@
+parallelism:
+  max_concurrent_jobs: 5
+  task_evaluation_workers: 3
+  evolution_workers: 2
+  validation_workers: 2
+
+rate_limiting:
+  api_requests_per_minute: 20
+  retry_backoff_seconds:
+  - 1
+  - 2
+  - 4
+  - 8
+  - 16
+  max_retries: 5
+
+timeouts:
+  task_execution_timeout: 300
+  evolution_timeout: 1800
+  validation_timeout: 120
+  job_queue_poll_interval: 5
+
+job_queue_file: job_queue.json
+log_level: INFO
