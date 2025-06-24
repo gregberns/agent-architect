@@ -114,27 +114,6 @@ type digestError = [
   | `EncodingError(string)
 ];
 
-/* Model integration setup */
-module Chat = (Model: ModelTypes.Model.MODEL) => {
-  let init = () => Model.make();
-
-  let sendMessage = (model, message: ModelTypes.ModelInput.t) =>
-    Model.invoke(model, message);
-};
-
-let googleApiKey =
-  Bindings.NodeJs.Process.getEnvWithDefault("GOOGLE_API_KEY", "NOT VALID");
-let gemini_2_0_flash = "gemini-2.0-flash";
-
-module LoadedGeminiModel =
-  Model.Providers.Google.Gemini({
-    let model = gemini_2_0_flash;
-    let apiKey = googleApiKey;
-    let temperature = 1.0;
-  });
-
-module MyChat = Chat(LoadedGeminiModel);
-
 /* Model invoke function using loaded Gemini model */
 let invokeModel =
     (~prompt: string, ~model: (module Model.Chat.CHAT)): IO.t(string, string) => {
@@ -225,18 +204,19 @@ let processSingleTestWithK =
     )
     : IO.t(DigestResult.t, digestError) => {
   let startTime = Js.Date.now();
+  Js.log2("  >> Complete - TaskId: ", task.task_id);
 
   // Map over prompt list and traverse over IO operations
-  List.IO.traverse(
-    template =>
-      processPromptKTimes(
-        ~model: (module Model.Chat.CHAT),
-        task,
-        template,
-        promptIterations,
-      ),
-    Array.toList(prompts),
-  )
+  prompts
+  |> Array.toList
+  |> List.IO.traverse(template =>
+       processPromptKTimes(
+         ~model: (module Model.Chat.CHAT),
+         task,
+         template,
+         promptIterations,
+       )
+     )
   |> IO.map((promptResultList): DigestResult.t => {
        let prompt_results = Array.fromList(promptResultList);
        let processingTime = Js.Date.now() -. startTime;
@@ -274,138 +254,123 @@ let digestSingleTest =
       task: evaluationTask,
       (),
     )
-    : IO.t(DigestResult.t, digestError) => {
-  Js.log(
-    "    #### Task: "
-    ++ (task.task_id |> Int.toString)
-    ++ " (k="
-    ++ (promptIterations |> Int.toString)
-    ++ ")",
-  );
+    : IO.t(DigestResult.t, digestError) =>
   processSingleTestWithK(~model, task, prompts, promptIterations)
   |> IO.flatMap(result => {
-       writeDigestResult(result, outputPath) |> IO.map(_ => result)
+       Js.log2("  >> Complete - TaskId: ", task.task_id);
+       writeDigestResult(result, outputPath) |> IO.map(_ => result);
      });
-};
 
 /* Batch processing functions with k parameter */
-let digestMultipleTests =
-    (
-      ~model: (module Model.Chat.CHAT),
-      ~prompts: array(Shared.PromptTemplate.t),
-      ~outputPath: string,
-      ~batchSize: int=5,
-      ~promptIterations: int=1, // Number of times to run each prompt
-      tasks: array(evaluationTask),
-      (),
-    )
-    : IO.t(array(DigestResult.t), digestError) => {
-  // Process in batches to avoid overwhelming the model
-  let taskBatches = Array.chunk(batchSize, tasks);
-
-  List.IO.traverse(
-    batch => {
-      List.IO.traverse(
-        task =>
-          digestSingleTest(
-            ~model,
-            ~prompts,
-            ~outputPath,
-            ~promptIterations,
-            task,
-            (),
-          ),
-        Array.toList(batch),
-      )
-    },
-    Array.toList(taskBatches),
-  )
-  |> IO.map(batchResults => {batchResults |> List.flatten |> Array.fromList});
-};
+// let digestMultipleTests =
+//     (
+//       ~model: (module Model.Chat.CHAT),
+//       ~prompts: array(Shared.PromptTemplate.t),
+//       ~outputPath: string,
+//       ~batchSize as _: int=5,
+//       ~promptIterations: int=1, // Number of times to run each prompt
+//       tasks: array(evaluationTask),
+//       (),
+//     )
+//     : IO.t(array(DigestResult.t), digestError) =>
+//   tasks
+//   |> Array.toList
+//   |> Utils.IOUtils.List.Sequential.traverse((task: evaluationTask) => {
+//        Js.log2("  >> TaskId: ", task.task_id);
+//        digestSingleTest(
+//          ~model,
+//          ~prompts,
+//          ~outputPath,
+//          ~promptIterations,
+//          task,
+//          (),
+//        );
+//      })
+//   |> IO.map(Array.fromList);
 
 /* Utility functions using shared implementations */
 module DigestUtils = {
-  let loadAndDigestJsonl =
-      (
-        ~model: (module Model.Chat.CHAT),
-        ~inputPath: string,
-        ~prompts,
-        ~outputPath: string,
-        ~promptIterations: int=1,
-        (),
-      ) // Number of times to run each prompt
-      : IO.t(array(DigestResult.t), string) => {
-    // Use shared function to load evaluation dataset
-    Shared.loadEvaluationDataset(inputPath)
-    |> IO.tap(_ => Js.log("############ Loaded Data"))
-    |> IO.flatMap(tasks => {
-         digestMultipleTests(
-           ~model,
-           ~outputPath,
-           ~prompts,
-           ~promptIterations,
-           tasks,
-           (),
-         )
-         |> IO.mapError(error => {
-              switch (error) {
-              | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
-              | `FileWriteError(jsError) =>
-                "File write error: "
-                ++ (
-                  Js.Exn.message(jsError)
-                  |> Option.getOrElse("<<NO MESSAGE>>")
-                )
-              | `PromptGenerationError(msg) =>
-                "Prompt generation error: " ++ msg
-              | `EncodingError(msg) => "Encoding error: " ++ msg
-              }
-            })
-       });
-  };
+  // let loadAndDigestJsonl =
+  //     (
+  //       ~model: (module Model.Chat.CHAT),
+  //       ~inputPath: string,
+  //       ~prompts,
+  //       ~outputPath: string,
+  //       ~promptIterations: int=1,
+  //       (),
+  //     ) // Number of times to run each prompt
+  //     : IO.t(array(DigestResult.t), string) => {
+  //   // Use shared function to load evaluation dataset
+  //   Shared.loadEvaluationDataset(inputPath)
+  //   |> IO.tap(_ => Js.log("############ Loaded Data"))
+  //   |> IO.flatMap(tasks => {
+  //        digestMultipleTests(
+  //          ~model,
+  //          ~outputPath,
+  //          ~prompts,
+  //          ~promptIterations,
+  //          tasks,
+  //          (),
+  //        )
+  //        |> IO.mapError(error => {
+  //             switch (error) {
+  //             | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
+  //             | `FileWriteError(jsError) =>
+  //               "File write error: "
+  //               ++ (
+  //                 Js.Exn.message(jsError)
+  //                 |> Option.getOrElse("<<NO MESSAGE>>")
+  //               )
+  //             | `PromptGenerationError(msg) =>
+  //               "Prompt generation error: " ++ msg
+  //             | `EncodingError(msg) => "Encoding error: " ++ msg
+  //             }
+  //           })
+  //      });
+  // };
 
-  let digestSingleTaskById =
-      (
-        ~model: (module Model.Chat.CHAT),
-        ~prompts,
-        ~taskListPath: string,
-        ~taskId: int,
-        ~outputPath: string,
-        ~promptIterations: int=1,
-        (),
-      ) // Number of times to run each prompt
-      : IO.t(DigestResult.t, string) => {
-    // Use shared function to load evaluation dataset
-    Shared.loadEvaluationDataset(taskListPath)
-    |> IO.tap(_ => Js.log("############ Loaded Data"))
-    |> IO.flatMap(tasks =>
-         Shared.EvaluationTask.getTaskById(tasks, taskId)
-         |> Option.fold("Task Not Found" |> IO.throw, task =>
-              digestSingleTest(
-                ~model,
-                ~prompts,
-                ~outputPath,
-                ~promptIterations,
-                task,
-                (),
-              )
-              |> IO.mapError(error =>
-                   switch (error) {
-                   | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
-                   | `FileWriteError(jsError) =>
-                     "File write error: "
-                     ++ (
-                       Js.Exn.message(jsError)
-                       |> Option.getOrElse("<<NO MESSAGE>>")
-                     )
-                   | `PromptGenerationError(msg) =>
-                     "Prompt generation error: " ++ msg
-                   | `EncodingError(msg) => "Encoding error: " ++ msg
-                   }
-                 )
-            )
-       );
-  };
+  // let digestSingleTaskById =
+  //     (
+  //       ~model: (module Model.Chat.CHAT),
+  //       ~prompts,
+  //       ~taskListPath: string,
+  //       ~taskId: int,
+  //       ~outputPath: string,
+  //       ~promptIterations: int=1,
+  //       (),
+  //     ) // Number of times to run each prompt
+  //     : IO.t(DigestResult.t, string) =>
+  //   // Use shared function to load evaluation dataset
+  //   Shared.loadEvaluationDataset(taskListPath)
+  //   |> IO.tap(_ => Js.log("############ Loaded Data"))
+  //   |> IO.flatMap(tasks =>
+  //        Shared.EvaluationTask.getTaskById(tasks, taskId)
+  //        |> Option.fold("Task Not Found" |> IO.throw, task =>
+  //             digestSingleTest(
+  //               ~model,
+  //               ~prompts,
+  //               ~outputPath,
+  //               ~promptIterations,
+  //               task,
+  //               (),
+  //             )
+  //             |> IO.mapError(error =>
+  //                  switch (error) {
+  //                  | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
+  //                  | `FileWriteError(jsError) =>
+  //                    "File write error: "
+  //                    ++ (
+  //                      Js.Exn.message(jsError)
+  //                      |> Option.getOrElse("<<NO MESSAGE>>")
+  //                    )
+  //                  | `PromptGenerationError(msg) =>
+  //                    "Prompt generation error: " ++ msg
+  //                  | `EncodingError(msg) => "Encoding error: " ++ msg
+  //                  }
+  //                )
+  //           )
+  //      );
+  //
 
   let mergeData = (task_paths, evaluationData) => {
     let tasks =
@@ -450,37 +415,38 @@ module DigestUtils = {
     |> IO.tap(_ => Js.log("############ Loaded Data"))
     |> IO.map(mergeData(task_paths))
     |> IO.flatMap(
-         Array.IO.traverse(
-           (
-             (
-               {runs_file_path, _}: InputFileStructure.TaskPaths.t,
-               evalTask: Shared.EvaluationTask.t,
-             ),
-           ) => {
-           // let outputPath = outputPathGenerator(task_id);
-           digestSingleTest(
-             ~model,
-             ~outputPath=runs_file_path,
-             ~prompts,
-             ~promptIterations=prompt_iterations,
-             evalTask,
-             (),
-           )
-           |> IO.mapError(error =>
-                switch (error) {
-                | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
-                | `FileWriteError(jsError) =>
-                  "File write error: "
-                  ++ (
-                    Js.Exn.message(jsError)
-                    |> Option.getOrElse("<<NO MESSAGE>>")
-                  )
-                | `PromptGenerationError(msg) =>
-                  "Prompt generation error: " ++ msg
-                | `EncodingError(msg) => "Encoding error: " ++ msg
-                }
+         Array.toList
+         >> Utils.IOUtils.List.Sequential.traverse(
+              (
+                (
+                  {runs_file_path, _}: InputFileStructure.TaskPaths.t,
+                  evalTask: Shared.EvaluationTask.t,
+                ),
+              ) => {
+              digestSingleTest(
+                ~model,
+                ~outputPath=runs_file_path,
+                ~prompts,
+                ~promptIterations=prompt_iterations,
+                evalTask,
+                (),
               )
-         }),
+              |> IO.mapError(error =>
+                   switch (error) {
+                   | `ModelInvokeError(msg) => "Model invoke error: " ++ msg
+                   | `FileWriteError(jsError) =>
+                     "File write error: "
+                     ++ (
+                       Js.Exn.message(jsError)
+                       |> Option.getOrElse("<<NO MESSAGE>>")
+                     )
+                   | `PromptGenerationError(msg) =>
+                     "Prompt generation error: " ++ msg
+                   | `EncodingError(msg) => "Encoding error: " ++ msg
+                   }
+                 )
+            })
+         >> IO.map(List.toArray),
        );
   };
 

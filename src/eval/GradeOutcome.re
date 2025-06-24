@@ -399,7 +399,7 @@ let gradeAndWrite:
 let generateMarkdownSummary =
     (reports: array(TaskGradeReport.t), epoch: string): string => {
   // Extract prompt information from the first report (assuming all tasks use same prompts)
-  let promptInfo =
+  let _promptInfo =
     switch (Array.head(reports)) {
     | Some(firstReport) =>
       firstReport.gradeSummaries
@@ -587,15 +587,29 @@ let generateMarkdownSummary =
            let bestTask = Array.head(taskPerformances);
            let worstTask = Array.last(taskPerformances);
 
-           Printf.sprintf(
-             {|### %s (hash: %s)
-
-**Overall Performance:**
-- Average Score: %.2f
+           let overallPerformance =
+             Printf.sprintf(
+               {|- Average Score: %.2f
 - Total Attempts: %d
 - Parse Failure Rate: %.1f%% (%d failures)
 - Partial Success Rate: %.1f%% (%d partial)
 - Full Success Rate: %.1f%% (%d full)
+|},
+               averageScore,
+               totalAttempts,
+               parseFailureRate,
+               parseFailures,
+               partialSuccessRate,
+               partialSuccesses,
+               fullSuccessRate,
+               fullSuccesses,
+             );
+
+           Printf.sprintf(
+             {|### %s (hash: %s)
+
+**Overall Performance:**
+%s
 
 **Task Performance:**
 - Best Task: %s
@@ -614,14 +628,7 @@ let generateMarkdownSummary =
 |},
              promptTemplate.name,
              promptTemplate.hash,
-             averageScore,
-             totalAttempts,
-             parseFailureRate,
-             parseFailures,
-             partialSuccessRate,
-             partialSuccesses,
-             fullSuccessRate,
-             fullSuccesses,
+             overallPerformance,
              switch (bestTask) {
              | Some((taskId, score)) =>
                Printf.sprintf("Task %d (%.2f)", taskId, score)
@@ -707,9 +714,7 @@ let generateMarkdownSummary =
 
 %s
 
-## Prompts Used
 
-%s
 
 ## Prompt Performance Analysis
 
@@ -725,7 +730,9 @@ let generateMarkdownSummary =
 |},
     epoch,
     summary,
-    promptInfo,
+    //     ## Prompts Used
+    // %s
+    // promptInfo,
     promptAnalysis,
     taskResults,
     Js.Date.make() |> Js.Date.toISOString,

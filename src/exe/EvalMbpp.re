@@ -149,9 +149,9 @@ let inputConfig =
     ~task_list_path=
       "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/source-data/mbpp.jsonl",
     ~task_range=
-      Eval.InputFileStructure.TaskRange.make(~start_task=601, ~end_task=610),
+      Eval.InputFileStructure.TaskRange.make(~start_task=601, ~end_task=630),
     ~prompt_file_path=
-      "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/prompts/prompts_003.json",
+      "/Users/gb/github/ai-experiments/agent-architect/data/evaluation/inputs/prompts/prompts_002.json",
     ~prompt_iterations=2,
   );
 
@@ -159,7 +159,7 @@ let inputConfig =
 
 // generateRunDefinitionUnit(inputConfig);
 
-let epoch = "003_2025-06-17_08-42-05";
+let epoch = "002_2025-06-17_23-19-25";
 
 // runDefinitionUnit(defPath(epoch));
 
