@@ -1,55 +1,55 @@
 {
   "running": true,
-  "pid": 39432,
-  "started_at": "2025-06-24T20:29:07.061691",
+  "pid": 52205,
+  "started_at": "2025-06-24T21:22:20.651725",
   "workers": {
     "task-worker-1": {
       "worker_id": "task-worker-1",
       "worker_type": "task_evaluation",
-      "pid": 39433,
-      "started_at": "2025-06-24T19:52:16.707042",
+      "pid": 52206,
+      "started_at": "2025-06-24T21:16:45.259518",
       "is_alive": true
     },
     "task-worker-2": {
       "worker_id": "task-worker-2",
       "worker_type": "task_evaluation",
-      "pid": 39434,
-      "started_at": "2025-06-24T19:52:16.708428",
+      "pid": 52207,
+      "started_at": "2025-06-24T21:16:45.260698",
       "is_alive": true
     },
     "task-worker-3": {
       "worker_id": "task-worker-3",
       "worker_type": "task_evaluation",
-      "pid": 39435,
-      "started_at": "2025-06-24T19:52:16.709786",
+      "pid": 52208,
+      "started_at": "2025-06-24T21:16:45.261819",
       "is_alive": true
     },
     "evolution-worker-1": {
       "worker_id": "evolution-worker-1",
       "worker_type": "evolution",
-      "pid": 39436,
-      "started_at": "2025-06-24T19:52:16.711236",
+      "pid": 52209,
+      "started_at": "2025-06-24T21:16:45.263178",
       "is_alive": true
     },
     "evolution-worker-2": {
       "worker_id": "evolution-worker-2",
       "worker_type": "evolution",
-      "pid": 39437,
-      "started_at": "2025-06-24T19:52:16.712608",
+      "pid": 52210,
+      "started_at": "2025-06-24T21:16:45.264860",
       "is_alive": true
     },
     "validation-worker-1": {
       "worker_id": "validation-worker-1",
       "worker_type": "validation",
-      "pid": 39438,
-      "started_at": "2025-06-24T19:52:16.714022",
+      "pid": 52211,
+      "started_at": "2025-06-24T21:16:45.266416",
       "is_alive": true
     },
     "validation-worker-2": {
       "worker_id": "validation-worker-2",
       "worker_type": "validation",
-      "pid": 39439,
-      "started_at": "2025-06-24T19:52:16.715503",
+      "pid": 52212,
+      "started_at": "2025-06-24T21:16:45.268121",
       "is_alive": true
     }
   },

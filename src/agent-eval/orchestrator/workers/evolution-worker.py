@@ -29,8 +29,8 @@ class EvolutionWorker:
         
         while self.running:
             try:
-                # Get next job from queue
-                job = self.job_queue.dequeue(self.worker_id)
+                # Get next job from queue (only EVOLVE_EPOCH jobs)
+                job = self.job_queue.dequeue(self.worker_id, [JobType.EVOLVE_EPOCH])
                 
                 if job is None:
                     # No jobs available, wait and try again

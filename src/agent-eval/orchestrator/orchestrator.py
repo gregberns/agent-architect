@@ -45,7 +45,9 @@ class WorkerProcess:
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                text=True
+                stdin=subprocess.DEVNULL,
+                text=True,
+                start_new_session=True
             )
             
             self.started_at = datetime.now()
@@ -178,7 +180,7 @@ class Orchestrator:
         # Task evaluation workers
         for i in range(self.config.parallelism.task_evaluation_workers):
             worker_id = f"task-worker-{i+1}"
-            script_path = workers_dir / "task-worker.py"
+            script_path = workers_dir / "task-worker-debug.py"
             
             if script_path.exists():
                 worker = WorkerProcess(worker_id, "task_evaluation", str(script_path))

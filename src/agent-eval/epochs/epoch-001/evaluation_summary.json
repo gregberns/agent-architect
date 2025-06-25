@@ -1,46 +1,42 @@
 {
   "epoch": "epoch-001",
   "total_tasks": 5,
-  "successful_tasks": 5,
-  "failed_tasks": 0,
+  "successful_tasks": 1,
+  "failed_tasks": 4,
   "task_results": {
     "task-004": {
-      "status": "completed",
-      "job_id": "8ba06e9f-1ea7-49cf-bc9d-b6ab712a27b5",
-      "output": "Diagnostic worker completed job",
-      "execution_time": 0.5,
-      "needs_validation": true
+      "status": "failed",
+      "job_id": "edca48dc-58ee-4dfa-86bd-280e32965018",
+      "error": "Task execution failed (return code 1)",
+      "needs_validation": false
+    },
+    "task-002": {
+      "status": "failed",
+      "job_id": "fbabf815-b344-4b80-b554-ccb9c95e9c1a",
+      "error": "Wrong job type for evolution worker: JobType.EVALUATE_TASK",
+      "needs_validation": false
+    },
+    "task-005": {
+      "status": "failed",
+      "job_id": "a9ed244e-bf72-49c0-a558-87efa73d9d43",
+      "error": "Wrong job type for validation worker: JobType.EVALUATE_TASK",
+      "needs_validation": false
+    },
+    "task-001": {
+      "status": "failed",
+      "job_id": "aa6dbabb-053c-4dd8-a3b0-19f440ca24b6",
+      "error": "Wrong job type for validation worker: JobType.EVALUATE_TASK",
+      "needs_validation": false
     },
     "task-003": {
       "status": "completed",
-      "job_id": "695aea18-fe4d-402b-b987-ee7b7c936936",
-      "output": "Diagnostic worker completed job",
-      "execution_time": 0.5,
-      "needs_validation": true
-    },
-    "task-002": {
-      "status": "completed",
-      "job_id": "877c1b48-bb63-4436-b7f3-030246e18bd1",
-      "output": "Diagnostic worker completed job",
-      "execution_time": 0.5,
-      "needs_validation": true
-    },
-    "task-005": {
-      "status": "completed",
-      "job_id": "8317aa6f-6ce6-473b-b1b0-49b0e6613f8f",
-      "output": "Diagnostic worker completed job",
-      "execution_time": 0.5,
-      "needs_validation": true
-    },
-    "task-001": {
-      "status": "completed",
-      "job_id": "76b37eea-c227-4793-9bb7-7d7372b14a15",
-      "output": "Diagnostic worker completed job",
-      "execution_time": 0.5,
+      "job_id": "6e0f6de3-d3c9-4d0e-8023-bdbe9f354830",
+      "output": "Task completed. Generated 1 Python files.",
+      "execution_time": 8.950454950332642,
       "needs_validation": true
     }
   },
   "overall_score": 0,
   "max_possible_score": 10,
-  "success_rate": 100.0
+  "success_rate": 20.0
 }

@@ -30,8 +30,8 @@ class ValidationWorker:
         
         while self.running:
             try:
-                # Get next job from queue
-                job = self.job_queue.dequeue(self.worker_id)
+                # Get next job from queue (only COMPILE_CHECK jobs)
+                job = self.job_queue.dequeue(self.worker_id, [JobType.COMPILE_CHECK])
                 
                 if job is None:
                     # No jobs available, wait and try again

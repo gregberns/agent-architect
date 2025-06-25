@@ -6,6 +6,9 @@ import json
 import uuid
 import time
 import threading
+import fcntl
+import os
+import tempfile
 from datetime import datetime, timedelta
 from enum import Enum
 from dataclasses import dataclass, asdict
@@ -147,11 +150,17 @@ class JobQueue:
         
         return job.id
     
-    def dequeue(self, worker_id: str) -> Optional[Job]:
+    def dequeue(self, worker_id: str, job_types: List[JobType] = None) -> Optional[Job]:
         """Get the next pending job and mark it as running"""
         with self._lock:
+            # Always reload from file to see fresh jobs from other processes
+            self.load_from_file()
+            
             for job in self.jobs.values():
                 if job.status == JobStatus.PENDING:
+                    # If job_types specified, only return matching job types
+                    if job_types and job.job_type not in job_types:
+                        continue
                     job.mark_running(worker_id)
                     self.save_to_file()
                     return job
@@ -261,39 +270,97 @@ class JobQueue:
             return stats
     
     def save_to_file(self):
-        """Save queue state to file"""
-        try:
-            data = {
-                'jobs': {job_id: job.to_dict() for job_id, job in self.jobs.items()},
-                'saved_at': datetime.now().isoformat()
-            }
-            
-            # Write to temporary file first, then rename for atomic operation
-            temp_file = self.persistence_file.with_suffix('.tmp')
-            with open(temp_file, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
-            
-            temp_file.replace(self.persistence_file)
-            
-        except Exception as e:
-            print(f"Error saving job queue: {e}")
+        """Save queue state to file with atomic write"""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                data = {
+                    'jobs': {job_id: job.to_dict() for job_id, job in self.jobs.items()},
+                    'saved_at': datetime.now().isoformat()
+                }
+                
+                # Use atomic write with temporary file in same directory
+                temp_fd, temp_path = tempfile.mkstemp(
+                    suffix='.tmp', 
+                    prefix='job_queue_', 
+                    dir=self.persistence_file.parent
+                )
+                
+                try:
+                    with os.fdopen(temp_fd, 'w') as f:
+                        json.dump(data, f, indent=2, default=str)
+                        f.flush()
+                        os.fsync(f.fileno())  # Force write to disk
+                    
+                    # Atomic move
+                    os.replace(temp_path, self.persistence_file)
+                    return  # Success
+                    
+                except Exception as e:
+                    # Clean up temp file on error
+                    try:
+                        os.unlink(temp_path)
+                    except:
+                        pass
+                    raise e
+                
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(0.1 * (attempt + 1))  # Exponential backoff
+                    continue
+                else:
+                    print(f"Error saving job queue after {max_retries} attempts: {e}")
     
     def load_from_file(self):
-        """Load queue state from file"""
+        """Load queue state from file with robust error handling"""
         if not self.persistence_file.exists():
             return
         
-        try:
-            with open(self.persistence_file, 'r') as f:
-                data = json.load(f)
-            
-            jobs_data = data.get('jobs', {})
-            self.jobs = {job_id: Job.from_dict(job_data) 
-                        for job_id, job_data in jobs_data.items()}
-            
-        except Exception as e:
-            print(f"Error loading job queue: {e}")
-            self.jobs = {}
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                # Try to read the file
+                with open(self.persistence_file, 'r') as f:
+                    content = f.read()
+                
+                # Skip empty files
+                if not content.strip():
+                    if attempt < max_retries - 1:
+                        time.sleep(0.1 * (attempt + 1))
+                        continue
+                    else:
+                        self.jobs = {}
+                        return
+                
+                # Parse JSON
+                data = json.loads(content)
+                jobs_data = data.get('jobs', {})
+                self.jobs = {job_id: Job.from_dict(job_data) 
+                            for job_id, job_data in jobs_data.items()}
+                return  # Success
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                if attempt < max_retries - 1:
+                    # JSON corruption, wait and retry
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
+                else:
+                    print(f"Error loading job queue after {max_retries} attempts: {e}")
+                    # Try to recover by clearing corrupted data
+                    self.jobs = {}
+                    # Save empty state to fix corruption
+                    try:
+                        self.save_to_file()
+                    except:
+                        pass
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    time.sleep(0.1 * (attempt + 1))
+                    continue
+                else:
+                    print(f"Error loading job queue: {e}")
+                    self.jobs = {}
+                    return
     
     def reload_from_file(self):
         """Reload queue state from file (for monitoring fresh updates)"""
