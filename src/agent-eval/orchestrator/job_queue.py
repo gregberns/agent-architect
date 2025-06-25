@@ -227,6 +227,31 @@ class JobQueue:
             
             return retried_count
     
+    def reset_running_jobs(self) -> int:
+        """Reset jobs stuck in RUNNING state to PENDING (for orchestrator restart)"""
+        with self._lock:
+            reset_count = 0
+            for job in self.jobs.values():
+                if job.status == JobStatus.RUNNING:
+                    job.status = JobStatus.PENDING
+                    job.started_at = None
+                    job.worker_id = None
+                    reset_count += 1
+            
+            if reset_count > 0:
+                self.save_to_file()
+            
+            return reset_count
+    
+    def clear_all_jobs(self) -> int:
+        """Clear all jobs from the queue (DANGEROUS!)"""
+        with self._lock:
+            job_count = len(self.jobs)
+            self.jobs.clear()
+            if job_count > 0:
+                self.save_to_file()
+            return job_count
+    
     def get_queue_stats(self) -> Dict[str, int]:
         """Get queue statistics"""
         with self._lock:
@@ -269,3 +294,8 @@ class JobQueue:
         except Exception as e:
             print(f"Error loading job queue: {e}")
             self.jobs = {}
+    
+    def reload_from_file(self):
+        """Reload queue state from file (for monitoring fresh updates)"""
+        with self._lock:
+            self.load_from_file()

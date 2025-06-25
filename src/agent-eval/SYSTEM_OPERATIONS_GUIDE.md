@@ -377,8 +377,9 @@ orchestrator/job_queue.json          # Persistent job queue
 ```bash
 cd src/agent-eval/orchestrator
 
-# Quick status check
+# Quick status check (shows live status when running)
 python3 orchestrator.py --status
+# Output shows: Running status, worker PIDs, queue stats, orchestrator PID
 
 # Detailed job queue inspection
 python3 -c "
@@ -418,11 +419,14 @@ du -sh src/agent-eval/
 # Check for hung processes
 ps aux | grep python3
 
-# Restart orchestrator
+# Reset stuck running jobs to pending
+python3 orchestrator.py --reset-queue
+
+# Restart orchestrator (will auto-reset on start)
 python3 orchestrator.py --stop
 python3 orchestrator.py --start
 
-# Reset stuck jobs
+# Retry failed jobs if needed
 python3 orchestrator.py --retry-failed
 ```
 
@@ -542,22 +546,24 @@ python3 metrics_cli.py analyze --epochs epoch-001 epoch-002 --output analysis.js
 
 ### Job Queue Management
 
-1. **Clear Failed Jobs:**
+1. **Queue Status and Cleanup:**
 ```bash
 cd src/agent-eval/orchestrator
+
+# Check queue status
+python3 orchestrator.py --status
 
 # Retry all failed jobs
 python3 orchestrator.py --retry-failed
 
-# Or manually clear queue
-python3 -c "
-from job_queue import JobQueue
-from config_simple import load_config
-jq = JobQueue(load_config().job_queue_file)
-# Clear all jobs (DANGEROUS!)
-# jq.jobs.clear()
-# jq._save_jobs()
-"
+# Clear only completed jobs (safe)
+python3 orchestrator.py --clear-queue
+
+# Reset stuck running jobs to pending (after crash/restart)
+python3 orchestrator.py --reset-queue
+
+# Clear ALL jobs from queue (DANGEROUS!)
+python3 orchestrator.py --clear-all-jobs
 ```
 
 2. **Add Custom Jobs:**
@@ -804,9 +810,12 @@ python3 metrics_cli.py report --epoch epoch-001
 cd ../orchestrator && python3 orchestrator.py --stop
 ```
 
-**Emergency Commands:**
+**Stop System Properly:**
 ```bash
-# Force stop everything
+# Stop orchestrator gracefully
+python3 orchestrator.py --stop
+
+# Emergency force stop if needed
 pkill -f "python3.*orchestrator"
 docker-compose down  # In each agent-src directory
 

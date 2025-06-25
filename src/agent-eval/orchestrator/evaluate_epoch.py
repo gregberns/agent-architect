@@ -159,6 +159,9 @@ class EpochEvaluator:
         results = {}
         
         while time.time() - start_time < timeout_seconds:
+            # Reload queue state to get fresh updates from workers
+            self.job_queue.reload_from_file()
+            
             # Check status of all jobs
             completed_jobs = 0
             running_jobs = 0

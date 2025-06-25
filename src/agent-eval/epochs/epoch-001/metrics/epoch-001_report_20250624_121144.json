@@ -1,0 +1,80 @@
+{
+  "metadata": {
+    "epoch": "epoch-001",
+    "generated_at": "2025-06-24T12:11:44.403211",
+    "report_version": "1.0"
+  },
+  "summary": {
+    "total_score": 0,
+    "max_possible_score": 10,
+    "success_rate": 0.0,
+    "total_tasks": 5,
+    "completed_tasks": 0,
+    "failed_tasks": 0,
+    "pending_tasks": 5,
+    "compilation_success_rate": 0.0,
+    "test_success_rate": 0.0
+  },
+  "task_details": {
+    "task-001": {
+      "status": "missing_evaluation",
+      "total_score": 0,
+      "max_possible_score": 2,
+      "success_rate": 0.0,
+      "compilation_score": 0,
+      "test_score": 0,
+      "execution_time": 0.0,
+      "output_files": [],
+      "error_message": "No evaluation job found",
+      "job_id": null
+    },
+    "task-002": {
+      "status": "missing_evaluation",
+      "total_score": 0,
+      "max_possible_score": 2,
+      "success_rate": 0.0,
+      "compilation_score": 0,
+      "test_score": 0,
+      "execution_time": 0.0,
+      "output_files": [],
+      "error_message": "No evaluation job found",
+      "job_id": null
+    },
+    "task-003": {
+      "status": "missing_evaluation",
+      "total_score": 0,
+      "max_possible_score": 2,
+      "success_rate": 0.0,
+      "compilation_score": 0,
+      "test_score": 0,
+      "execution_time": 0.0,
+      "output_files": [],
+      "error_message": "No evaluation job found",
+      "job_id": null
+    },
+    "task-004": {
+      "status": "missing_evaluation",
+      "total_score": 0,
+      "max_possible_score": 2,
+      "success_rate": 0.0,
+      "compilation_score": 0,
+      "test_score": 0,
+      "execution_time": 0.0,
+      "output_files": [],
+      "error_message": "No evaluation job found",
+      "job_id": null
+    },
+    "task-005": {
+      "status": "missing_evaluation",
+      "total_score": 0,
+      "max_possible_score": 2,
+      "success_rate": 0.0,
+      "compilation_score": 0,
+      "test_score": 0,
+      "execution_time": 0.0,
+      "output_files": [],
+      "error_message": "No evaluation job found",
+      "job_id": null
+    }
+  }
+}

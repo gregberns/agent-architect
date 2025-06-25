@@ -7,6 +7,7 @@ Manages job queue and worker processes.
 import os
 import sys
 import time
+import json
 import signal
 import argparse
 import threading
@@ -42,8 +43,8 @@ class WorkerProcess:
             self.process = subprocess.Popen(
                 [sys.executable, self.script_path],
                 env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 text=True
             )
             
@@ -107,6 +108,11 @@ class Orchestrator:
         self.running = False
         self.monitor_thread: Optional[threading.Thread] = None
         
+        # Status persistence
+        self.base_dir = Path(__file__).parent
+        self.status_file = self.base_dir / "orchestrator_status.json"
+        self.pid_file = self.base_dir / "orchestrator.pid"
+        
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -121,10 +127,18 @@ class Orchestrator:
         print("Starting Agent Evaluation Orchestrator...")
         print(f"Configuration: {self.config.parallelism.max_concurrent_jobs} max jobs")
         
+        # Reset any jobs stuck in RUNNING state from previous orchestrator crash
+        reset_count = self.job_queue.reset_running_jobs()
+        if reset_count > 0:
+            print(f"Reset {reset_count} jobs stuck in RUNNING state to PENDING")
+        
         self.running = True
         
         # Start worker processes
         self._start_workers()
+        
+        # Save initial status
+        self._save_status()
         
         # Start monitoring thread
         self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
@@ -136,7 +150,9 @@ class Orchestrator:
         # Main loop
         try:
             while self.running:
-                time.sleep(1)
+                time.sleep(5)  # Save status every 5 seconds
+                if self.running:  # Check again in case we're shutting down
+                    self._save_status()
         except KeyboardInterrupt:
             print("\\nShutdown requested...")
         finally:
@@ -149,6 +165,9 @@ class Orchestrator:
         
         # Stop all workers
         self._stop_workers()
+        
+        # Clean up status files
+        self._cleanup_status_files()
         
         print("Orchestrator stopped")
     
@@ -238,8 +257,88 @@ class Orchestrator:
                 print(f"Error in monitor loop: {e}")
                 time.sleep(5)
     
+    def _save_status(self):
+        """Save orchestrator status to file"""
+        try:
+            status = {
+                'running': self.running,
+                'pid': os.getpid(),
+                'started_at': datetime.now().isoformat(),
+                'workers': {
+                    worker_id: {
+                        'worker_id': worker.worker_id,
+                        'worker_type': worker.worker_type,
+                        'pid': worker.process.pid if worker.process else None,
+                        'started_at': worker.started_at.isoformat() if worker.started_at else None,
+                        'is_alive': worker.is_alive()
+                    }
+                    for worker_id, worker in self.workers.items()
+                },
+                'config': {
+                    'max_concurrent_jobs': self.config.parallelism.max_concurrent_jobs,
+                    'task_workers': self.config.parallelism.task_evaluation_workers,
+                    'evolution_workers': self.config.parallelism.evolution_workers,
+                    'validation_workers': self.config.parallelism.validation_workers
+                }
+            }
+            
+            with open(self.status_file, 'w') as f:
+                json.dump(status, f, indent=2)
+            
+            # Also write PID file
+            with open(self.pid_file, 'w') as f:
+                f.write(str(os.getpid()))
+                
+        except Exception as e:
+            print(f"Warning: Could not save status: {e}")
+    
+    def _load_status(self) -> Optional[Dict]:
+        """Load orchestrator status from file"""
+        try:
+            if not self.status_file.exists():
+                return None
+            
+            with open(self.status_file, 'r') as f:
+                status = json.load(f)
+            
+            # Check if the process is actually running
+            if 'pid' in status:
+                try:
+                    # Check if process exists (works on Unix-like systems)
+                    os.kill(status['pid'], 0)
+                    return status
+                except (OSError, ProcessLookupError):
+                    # Process doesn't exist, remove stale files
+                    self._cleanup_status_files()
+                    return None
+            
+            return None
+            
+        except Exception as e:
+            print(f"Warning: Could not load status: {e}")
+            return None
+    
+    def _cleanup_status_files(self):
+        """Clean up stale status files"""
+        try:
+            if self.status_file.exists():
+                self.status_file.unlink()
+            if self.pid_file.exists():
+                self.pid_file.unlink()
+        except Exception as e:
+            print(f"Warning: Could not cleanup status files: {e}")
+    
     def get_status(self) -> Dict:
         """Get orchestrator status"""
+        # If this instance is not the running orchestrator, try to load status from file
+        if not self.running:
+            persisted_status = self._load_status()
+            if persisted_status:
+                # Add current queue stats to persisted status
+                persisted_status['queue'] = self.job_queue.get_queue_stats()
+                return persisted_status
+        
+        # Return current instance status
         queue_stats = self.job_queue.get_queue_stats()
         worker_statuses = [worker.get_status() for worker in self.workers.values()]
         
@@ -267,16 +366,37 @@ class Orchestrator:
         print("ORCHESTRATOR STATUS")
         print("="*60)
         print(f"Running: {status['running']}")
-        print(f"Workers: {status['workers']['alive']}/{status['workers']['total']} alive")
+        
+        # Handle both persisted status format and live status format
+        if 'workers' in status:
+            if isinstance(status['workers'], dict) and 'alive' in status['workers']:
+                # Live status format
+                print(f"Workers: {status['workers']['alive']}/{status['workers']['total']} alive")
+                worker_details = status['workers'].get('details', [])
+            else:
+                # Persisted status format - workers is a dict of worker_id -> worker_info
+                worker_details = list(status['workers'].values())
+                alive_count = sum(1 for w in worker_details if w.get('is_alive', False))
+                total_count = len(worker_details)
+                print(f"Workers: {alive_count}/{total_count} alive")
+        else:
+            print("Workers: 0/0 alive")
+            worker_details = []
         
         print("\\nQueue Status:")
-        for status_name, count in status['queue'].items():
+        for status_name, count in status.get('queue', {}).items():
             print(f"  {status_name.title()}: {count}")
         
         print("\\nWorkers:")
-        for worker in status['workers']['details']:
-            alive_status = "✅" if worker['is_alive'] else "❌"
-            print(f"  {alive_status} {worker['worker_id']} ({worker['worker_type']}) PID:{worker['pid']}")
+        for worker in worker_details:
+            alive_status = "✅" if worker.get('is_alive', False) else "❌"
+            worker_id = worker.get('worker_id', 'unknown')
+            worker_type = worker.get('worker_type', 'unknown')
+            pid = worker.get('pid', 'unknown')
+            print(f"  {alive_status} {worker_id} ({worker_type}) PID:{pid}")
+        
+        if status.get('pid'):
+            print(f"\\nOrchestrator PID: {status['pid']}")
         
         print("="*60)
     
@@ -293,6 +413,8 @@ def main():
     parser.add_argument("--stop", action="store_true", help="Stop the orchestrator")
     parser.add_argument("--retry-failed", action="store_true", help="Retry failed jobs")
     parser.add_argument("--clear-queue", action="store_true", help="Clear completed jobs")
+    parser.add_argument("--reset-queue", action="store_true", help="Reset stuck running jobs to pending")
+    parser.add_argument("--clear-all-jobs", action="store_true", help="Clear ALL jobs (DANGEROUS!)")
     
     args = parser.parse_args()
     
@@ -309,9 +431,52 @@ def main():
         retried = orchestrator.retry_failed_jobs()
         print(f"Retried {retried} failed jobs")
     
+    elif args.stop:
+        # Load status to find running orchestrator
+        persisted_status = orchestrator._load_status()
+        if persisted_status and persisted_status.get('pid'):
+            pid = persisted_status['pid']
+            try:
+                # Send SIGTERM to running orchestrator
+                os.kill(pid, signal.SIGTERM)
+                print(f"Sent stop signal to orchestrator (PID: {pid})")
+                
+                # Wait a moment for graceful shutdown
+                time.sleep(2)
+                
+                # Check if it's still running
+                try:
+                    os.kill(pid, 0)
+                    print(f"Orchestrator still running, sending SIGKILL...")
+                    os.kill(pid, signal.SIGKILL)
+                except (OSError, ProcessLookupError):
+                    pass  # Process already stopped
+                
+                # Clean up status files
+                orchestrator._cleanup_status_files()
+                print("Orchestrator stopped")
+                
+            except (OSError, ProcessLookupError):
+                print("Orchestrator process not found (may have already stopped)")
+                orchestrator._cleanup_status_files()
+        else:
+            print("No running orchestrator found")
+    
     elif args.clear_queue:
         orchestrator.job_queue.clear_completed_jobs(timedelta(minutes=1))
         print("Cleared completed jobs")
+    
+    elif args.reset_queue:
+        reset_count = orchestrator.job_queue.reset_running_jobs()
+        print(f"Reset {reset_count} stuck running jobs to pending")
+    
+    elif args.clear_all_jobs:
+        response = input("This will DELETE ALL JOBS from the queue. Are you sure? (yes/no): ")
+        if response.lower() == 'yes':
+            cleared_count = orchestrator.job_queue.clear_all_jobs()
+            print(f"Cleared {cleared_count} jobs from the queue")
+        else:
+            print("Operation cancelled")
     
     else:
         parser.print_help()
