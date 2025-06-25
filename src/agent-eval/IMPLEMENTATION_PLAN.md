@@ -113,8 +113,23 @@
 - [x] Unified CLI interface for all metrics operations
 - [x] Comprehensive test suite and documentation
 
-### Step 10: End-to-End Evaluation Pipeline ⏸️
-**Status**: Pending
+### Step 10: End-to-End Evaluation Pipeline 🔄
+**Status**: Needs Revision
+**Objective**: Complete automated pipeline: task execution → validation → metrics
+**Current Issues**:
+- evaluate_epoch.py doesn't automatically trigger validation jobs
+- metrics_cli shows "No evaluation job found" - disconnect between systems
+- Scoring system needs update (2-point → 3-point system)
+- Runtime files mixed with source code (poor organization)
+- Debug scripts scattered throughout codebase
+
+**Revised Deliverables**:
+- [x] Pipeline chaining: automatically enqueue validation jobs after task completion
+- [x] Fix metrics integration with job queue system
+- [x] Update scoring system: 1pt task completion + 1pt no errors + 1pt tests pass
+- [x] Reorganize file structure: separate runtime/logs from source code
+- [x] Consolidate debug/test scripts
+- [x] Test complete end-to-end pipeline
 
 ## Phase 3: Evolution System (Steps 11-15)
 
