@@ -64,17 +64,19 @@ class ValidationWorker:
                 time.sleep(5)
     
     def _execute_validation(self, job) -> JobResult:
-        """Execute validation checks"""
+        """Execute validation checks using docker-compose"""
         try:
             # Extract job parameters
             epoch = job.parameters.get('epoch', 'epoch-001')
             task = job.parameters.get('task', 'task-001')
             
-            print(f"  Validating {epoch}/{task}")
+            print(f"  Validating {epoch}/{task} using Docker")
             
             # Build paths
             base_dir = Path(__file__).parent.parent.parent
-            task_dir = base_dir / "epochs" / epoch / "runs" / task
+            epoch_dir = base_dir / "epochs" / epoch
+            agent_src_dir = epoch_dir / "agent-src"
+            task_dir = epoch_dir / "runs" / task
             output_dir = task_dir / "output"
             tests_dir = task_dir / "tests"
             
@@ -96,74 +98,94 @@ class ValidationWorker:
             test_score = 0
             total_files = len(py_files)
             
-            # Test compilation for each Python file
-            compiled_files = 0
-            for py_file in py_files:
-                try:
-                    # Try to compile the Python file
-                    result = subprocess.run(
-                        [sys.executable, "-m", "py_compile", str(py_file)],
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
+            # Set environment for docker-compose
+            env = os.environ.copy()
+            env['TASK_ID'] = task
+            
+            start_time = time.time()
+            
+            # Step 1: Test compilation using docker-compose
+            print(f"    🔍 Testing compilation for {total_files} Python files...")
+            
+            # Create a shell command to compile all Python files
+            py_file_paths = [f"/app/workspace/output/{f.name}" for f in py_files]
+            compile_command = ["sh", "-c", f"python -m py_compile {' '.join(py_file_paths)}"]
+            
+            try:
+                compile_result = subprocess.run(
+                    ["docker-compose", "run", "--rm", 
+                     "--entrypoint", "sh",
+                     "validation-compile", "-c", 
+                     f"python -m py_compile {' '.join(py_file_paths)}"],
+                    cwd=agent_src_dir,
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                    timeout=60
+                )
+                
+                if compile_result.returncode == 0:
+                    compilation_score = 1
+                    print(f"    ✅ All {total_files} files compile successfully")
+                else:
+                    print(f"    ❌ Compilation failed: {compile_result.stderr}")
                     
-                    if result.returncode == 0:
-                        compiled_files += 1
-                        print(f"    ✅ {py_file.name} compiles successfully")
-                    else:
-                        print(f"    ❌ {py_file.name} compilation failed: {result.stderr}")
-                        
-                except Exception as e:
-                    print(f"    ❌ {py_file.name} compilation error: {e}")
+            except subprocess.TimeoutExpired:
+                print(f"    ❌ Compilation timed out after 60 seconds")
+            except Exception as e:
+                print(f"    ❌ Compilation error: {e}")
             
-            # Calculate compilation score (1 point if all files compile)
-            if compiled_files == total_files:
-                compilation_score = 1
-            
-            # Run tests if available
+            # Step 2: Run tests using docker-compose
             if tests_dir.exists() and list(tests_dir.glob("test_*.py")):
+                print(f"    🧪 Running tests...")
+                
                 try:
-                    # Run pytest on the tests directory
-                    result = subprocess.run(
-                        [sys.executable, "-m", "pytest", str(tests_dir), "-v"],
-                        cwd=str(task_dir),
+                    test_result = subprocess.run(
+                        ["docker-compose", "run", "--rm", "validation-test"],
+                        cwd=agent_src_dir,
+                        env=env,
                         capture_output=True,
                         text=True,
                         timeout=self.config.timeouts.validation_timeout
                     )
                     
-                    if result.returncode == 0:
+                    if test_result.returncode == 0:
                         test_score = 1
-                        print(f"    ✅ Tests passed")
+                        print(f"    ✅ All tests passed")
                     else:
-                        print(f"    ❌ Tests failed: {result.stderr}")
+                        print(f"    ❌ Tests failed:")
+                        print(f"        STDOUT: {test_result.stdout}")
+                        print(f"        STDERR: {test_result.stderr}")
                         
+                except subprocess.TimeoutExpired:
+                    print(f"    ❌ Tests timed out after {self.config.timeouts.validation_timeout} seconds")
                 except Exception as e:
                     print(f"    ❌ Test execution error: {e}")
             else:
                 print(f"    ⚠️  No tests found in {tests_dir}")
             
+            execution_time = time.time() - start_time
             total_score = compilation_score + test_score
             
             return JobResult(
                 success=True,
-                output=f"Validation completed. Score: {total_score}/2 (compilation: {compilation_score}, tests: {test_score})",
-                execution_time=1.0,
+                output=f"Docker validation completed. Score: {total_score}/2 (compilation: {compilation_score}, tests: {test_score})",
+                execution_time=execution_time,
                 artifacts={
                     'compilation_score': compilation_score,
                     'test_score': test_score,
                     'total_score': total_score,
-                    'compiled_files': compiled_files,
                     'total_files': total_files,
-                    'output_files': [str(f) for f in py_files]
+                    'output_files': [str(f) for f in py_files],
+                    'validation_method': 'docker-compose',
+                    'execution_time': execution_time
                 }
             )
             
         except Exception as e:
             return JobResult(
                 success=False,
-                error=f"Validation error: {str(e)}"
+                error=f"Docker validation error: {str(e)}"
             )
 
 def main():
