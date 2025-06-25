@@ -102,6 +102,9 @@ class ValidationWorker:
             env = os.environ.copy()
             env['TASK_ID'] = task
             
+            # Use unique project name to avoid container conflicts
+            project_name = f"validation-{epoch}-{task}-{int(time.time())}"
+            
             start_time = time.time()
             
             # Step 1: Test compilation using docker-compose
@@ -109,11 +112,10 @@ class ValidationWorker:
             
             # Create a shell command to compile all Python files
             py_file_paths = [f"/app/workspace/output/{f.name}" for f in py_files]
-            compile_command = ["sh", "-c", f"python -m py_compile {' '.join(py_file_paths)}"]
             
             try:
                 compile_result = subprocess.run(
-                    ["docker-compose", "run", "--rm", 
+                    ["docker-compose", "-p", project_name, "run", "--rm", 
                      "--entrypoint", "sh",
                      "validation-compile", "-c", 
                      f"python -m py_compile {' '.join(py_file_paths)}"],
@@ -141,7 +143,7 @@ class ValidationWorker:
                 
                 try:
                     test_result = subprocess.run(
-                        ["docker-compose", "run", "--rm", "validation-test"],
+                        ["docker-compose", "-p", project_name, "run", "--rm", "validation-test"],
                         cwd=agent_src_dir,
                         env=env,
                         capture_output=True,

@@ -21,16 +21,18 @@ class TaskScore:
     """Score for a single task"""
     task_name: str
     epoch: str
-    compilation_score: int = 0
-    test_score: int = 0
+    task_completion_score: int = 0  # 1 point for completing the task
+    compilation_score: int = 0      # 1 point for compilation success
+    test_score: int = 0             # 1 point for tests passing
     total_score: int = 0
-    max_possible_score: int = 2
+    max_possible_score: int = 3     # Updated to 3-point system
     success_rate: float = 0.0
     status: str = "pending"  # pending, completed, failed, missing_validation
     execution_time: float = 0.0
     output_files: List[str] = None
     error_message: str = None
     job_id: str = None
+    validation_job_id: str = None
 
     def __post_init__(self):
         if self.output_files is None:
@@ -75,9 +77,34 @@ class ScoreCalculator:
     
     def calculate_task_score(self, epoch: str, task_name: str) -> TaskScore:
         """
-        Calculate score for a single task by examining job results
+        Calculate score for a single task by examining evaluation summary and job results
         """
-        # Find evaluation job for this task
+        # First try to read from evaluation summary file (preferred method)
+        evaluation_summary = self._load_evaluation_summary(epoch)
+        if evaluation_summary and task_name in evaluation_summary.get('task_results', {}):
+            task_data = evaluation_summary['task_results'][task_name]
+            
+            task_score = TaskScore(
+                task_name=task_name,
+                epoch=epoch,
+                task_completion_score=task_data.get('task_completion_score', 0),
+                compilation_score=task_data.get('compilation_score', 0),
+                test_score=task_data.get('test_score', 0),
+                total_score=task_data.get('total_score', 0),
+                status=task_data.get('status', 'unknown'),
+                execution_time=task_data.get('execution_time', 0.0),
+                job_id=task_data.get('job_id'),
+                validation_job_id=task_data.get('validation_job_id')
+            )
+            
+            if 'error' in task_data:
+                task_score.error_message = task_data['error']
+            elif 'validation_error' in task_data:
+                task_score.error_message = task_data['validation_error']
+                
+            return task_score
+        
+        # Fallback: Find evaluation job for this task (legacy method)
         evaluation_job = self._find_evaluation_job(epoch, task_name)
         if not evaluation_job:
             return TaskScore(
@@ -100,15 +127,19 @@ class ScoreCalculator:
                 task_score.error_message = evaluation_job.result.error
             return task_score
         
+        # Task completed successfully - give 1 point for completion
+        task_score.task_completion_score = 1
+        task_score.status = "completed"
+        
         # Look for validation job results
         validation_job = self._find_validation_job(epoch, task_name)
         if not validation_job:
-            task_score.status = "missing_validation"
+            task_score.total_score = 1  # Only task completion point
             task_score.error_message = "Task completed but no validation job found"
             return task_score
         
         if validation_job.status != JobStatus.COMPLETED:
-            task_score.status = "validation_failed" 
+            task_score.total_score = 1  # Only task completion point
             if validation_job.result:
                 task_score.error_message = f"Validation failed: {validation_job.result.error}"
             return task_score
@@ -118,12 +149,14 @@ class ScoreCalculator:
             artifacts = validation_job.result.artifacts
             task_score.compilation_score = artifacts.get('compilation_score', 0)
             task_score.test_score = artifacts.get('test_score', 0)
-            task_score.total_score = artifacts.get('total_score', 0)
+            task_score.total_score = (task_score.task_completion_score + 
+                                     task_score.compilation_score + 
+                                     task_score.test_score)
             task_score.output_files = artifacts.get('output_files', [])
             task_score.execution_time = validation_job.result.execution_time or 0.0
-            task_score.status = "completed"
+            task_score.validation_job_id = validation_job.id
         else:
-            task_score.status = "completed"
+            task_score.total_score = 1  # Only task completion point
             task_score.error_message = "Validation completed but no scoring artifacts found"
         
         return task_score
@@ -217,13 +250,25 @@ class ScoreCalculator:
         for task_name, task_score in epoch_score.task_scores.items():
             summary['validation_details'][task_name] = {
                 'status': task_score.status,
-                'score': f"{task_score.total_score}/2",
+                'score': f"{task_score.total_score}/3",
+                'task_completion': bool(task_score.task_completion_score),
                 'compilation': bool(task_score.compilation_score),
                 'tests': bool(task_score.test_score),
                 'error': task_score.error_message
             }
         
         return summary
+    
+    def _load_evaluation_summary(self, epoch: str) -> Optional[Dict[str, Any]]:
+        """Load evaluation summary from file if it exists"""
+        summary_file = self.base_dir / "epochs" / epoch / "evaluation_summary.json"
+        if summary_file.exists():
+            try:
+                with open(summary_file, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Warning: Could not load evaluation summary: {e}")
+        return None
 
 def main():
     """CLI interface for score calculation"""
@@ -249,7 +294,8 @@ def main():
         task_score = calculator.calculate_task_score(args.epoch, args.task)
         print(f"Task Score for {args.epoch}/{args.task}:")
         print(f"  Status: {task_score.status}")
-        print(f"  Score: {task_score.total_score}/2 ({task_score.success_rate:.1f}%)")
+        print(f"  Score: {task_score.total_score}/3 ({task_score.success_rate:.1f}%)")
+        print(f"  Task Completion: {task_score.task_completion_score}/1")
         print(f"  Compilation: {task_score.compilation_score}/1")
         print(f"  Tests: {task_score.test_score}/1")
         if task_score.error_message:
@@ -266,7 +312,7 @@ def main():
         print(f"\nTask Breakdown:")
         for task_name, task_score in epoch_score.task_scores.items():
             status_icon = "✅" if task_score.status == "completed" else "❌"
-            print(f"  {status_icon} {task_name}: {task_score.total_score}/2 ({task_score.status})")
+            print(f"  {status_icon} {task_name}: {task_score.total_score}/3 ({task_score.status})")
 
 if __name__ == "__main__":
     main()

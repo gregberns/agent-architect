@@ -83,14 +83,17 @@ class TaskWorker:
                     error=f"Agent source directory not found: {agent_src_dir}"
                 )
             
-            # Execute docker-compose
+            # Execute docker-compose with unique project name to avoid conflicts
             start_time = time.time()
             
             env = os.environ.copy()
             env['TASK_ID'] = task
             
+            # Use unique project name to avoid container name conflicts
+            project_name = f"agent-eval-{epoch}-{task}-{int(time.time())}"
+            
             result = subprocess.run(
-                ["docker-compose", "up", "--build"],
+                ["docker-compose", "-p", project_name, "up", "--build"],
                 cwd=agent_src_dir,
                 env=env,
                 capture_output=True,
