@@ -10,6 +10,7 @@ import argparse
 import time
 from pathlib import Path
 from typing import List, Dict, Any
+from datetime import datetime
 
 # Add current directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent))
@@ -25,13 +26,14 @@ class EpochEvaluator:
         self.job_queue = JobQueue(self.config.job_queue_file)
         self.base_dir = Path(__file__).parent.parent
     
-    def evaluate_epoch(self, epoch_name: str, parallel: bool = True) -> Dict[str, Any]:
+    def evaluate_epoch(self, epoch_name: str, parallel: bool = True, generate_metrics: bool = True) -> Dict[str, Any]:
         """
         Evaluate an epoch against all default tasks
         
         Args:
             epoch_name: Name of epoch to evaluate (e.g., 'epoch-001')
             parallel: Whether to run tasks in parallel
+            generate_metrics: Whether to automatically generate comprehensive metrics
             
         Returns:
             Dictionary with evaluation results
@@ -74,6 +76,16 @@ class EpochEvaluator:
         
         # Generate summary
         summary = self._generate_evaluation_summary(epoch_name, results, validation_results)
+        
+        # Automatically generate metrics after evaluation is complete (if enabled)
+        if generate_metrics:
+            print("📊 Generating comprehensive metrics...")
+            metrics_summary = self._generate_comprehensive_metrics(epoch_name)
+            # Add metrics to the summary
+            summary['metrics'] = metrics_summary
+        else:
+            print("📊 Skipping metrics generation (disabled)")
+            summary['metrics'] = {'skipped': True, 'reason': 'Disabled by user'}
         
         return summary
     
@@ -439,6 +451,113 @@ class EpochEvaluator:
             print(f"   ✅ Scoring complete with validation results")
         
         return summary
+    
+    def _generate_comprehensive_metrics(self, epoch_name: str) -> Dict[str, Any]:
+        """
+        Generate comprehensive metrics using the metrics system
+        
+        Returns:
+            Dictionary with all metrics and reports
+        """
+        try:
+            # Import metrics modules
+            sys.path.insert(0, str(self.base_dir / "evaluation" / "metrics-collectors"))
+            from score_calculator import ScoreCalculator
+            from report_generator import ReportGenerator
+            from epoch_analyzer import EpochAnalyzer
+            
+            # Initialize metrics components
+            calculator = ScoreCalculator()
+            report_generator = ReportGenerator()
+            analyzer = EpochAnalyzer()
+            
+            metrics_summary = {
+                'epoch_name': epoch_name,
+                'generated_at': datetime.now().isoformat(),
+                'score_summary': None,
+                'detailed_report': None,
+                'analysis': None,
+                'reports_generated': []
+            }
+            
+            print(f"   📊 Calculating epoch scores...")
+            try:
+                # Calculate epoch score
+                epoch_score = calculator.calculate_epoch_score(epoch_name)
+                metrics_summary['score_summary'] = {
+                    'total_score': epoch_score.total_score,
+                    'max_possible_score': epoch_score.max_possible_score,
+                    'success_rate': epoch_score.success_rate,
+                    'completed_tasks': epoch_score.completed_tasks,
+                    'total_tasks': epoch_score.total_tasks,
+                    'compilation_success_rate': epoch_score.compilation_success_rate,
+                    'test_success_rate': epoch_score.test_success_rate
+                }
+                print(f"   ✅ Score: {epoch_score.total_score}/{epoch_score.max_possible_score} ({epoch_score.success_rate:.1f}%)")
+            except Exception as e:
+                print(f"   ⚠️  Score calculation failed: {e}")
+                metrics_summary['score_summary'] = {'error': str(e)}
+            
+            print(f"   📋 Generating detailed reports...")
+            try:
+                # Generate detailed report
+                report_data = report_generator.generate_epoch_report(epoch_name)
+                metrics_summary['detailed_report'] = report_data
+                
+                # Save reports to files
+                epoch_dir = self.base_dir / "epochs" / epoch_name / "metrics"
+                epoch_dir.mkdir(parents=True, exist_ok=True)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # Save JSON report
+                json_report_file = epoch_dir / f"{epoch_name}_report_{timestamp}.json"
+                with open(json_report_file, 'w') as f:
+                    json.dump(report_data, f, indent=2, default=str)
+                metrics_summary['reports_generated'].append(str(json_report_file))
+                print(f"   💾 Saved JSON report: {json_report_file.name}")
+                
+                # Save CSV report if task-level data is available
+                if 'task_results' in report_data:
+                    csv_report_file = epoch_dir / f"{epoch_name}_tasks_{timestamp}.csv"
+                    report_generator.save_tasks_csv(report_data['task_results'], csv_report_file)
+                    metrics_summary['reports_generated'].append(str(csv_report_file))
+                    print(f"   💾 Saved CSV report: {csv_report_file.name}")
+                
+            except Exception as e:
+                print(f"   ⚠️  Report generation failed: {e}")
+                metrics_summary['detailed_report'] = {'error': str(e)}
+            
+            print(f"   🔍 Analyzing epoch performance...")
+            try:
+                # Perform epoch analysis
+                analysis_data = analyzer.analyze_epoch(epoch_name)
+                metrics_summary['analysis'] = analysis_data
+                print(f"   ✅ Analysis complete")
+            except Exception as e:
+                print(f"   ⚠️  Analysis failed: {e}")
+                metrics_summary['analysis'] = {'error': str(e)}
+            
+            print(f"   🎯 Metrics generation complete!")
+            print(f"      - Score: {metrics_summary.get('score_summary', {}).get('success_rate', 'N/A')}% success rate")
+            print(f"      - Reports: {len(metrics_summary['reports_generated'])} files generated")
+            
+            return metrics_summary
+            
+        except ImportError as e:
+            print(f"   ⚠️  Metrics system not available: {e}")
+            return {
+                'error': f"Metrics system not available: {e}",
+                'epoch_name': epoch_name,
+                'generated_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            print(f"   ❌ Metrics generation failed: {e}")
+            return {
+                'error': f"Metrics generation failed: {e}",
+                'epoch_name': epoch_name,
+                'generated_at': datetime.now().isoformat()
+            }
 
 def main():
     """Main CLI interface"""
@@ -451,25 +570,40 @@ def main():
     parser.add_argument("--config", help="Configuration file path")
     parser.add_argument("--timeout", type=int, default=30, 
                        help="Timeout in minutes for monitoring jobs (default: 30)")
+    parser.add_argument("--no-metrics", action="store_true",
+                       help="Skip automatic metrics generation (evaluation only)")
     
     args = parser.parse_args()
     
     # Handle parallel/sequential flags
     parallel = args.parallel and not args.sequential
+    generate_metrics = not args.no_metrics
     
     try:
         evaluator = EpochEvaluator(args.config)
-        summary = evaluator.evaluate_epoch(args.epoch, parallel)
+        summary = evaluator.evaluate_epoch(args.epoch, parallel, generate_metrics)
         
         print(f"\n🎉 Evaluation of {args.epoch} completed!")
-        print(f"Results summary: {summary['successful_tasks']}/{summary['total_tasks']} tasks completed")
+        print(f"📊 Results summary: {summary['successful_tasks']}/{summary['total_tasks']} tasks completed")
+        
+        # Show metrics summary if available
+        if 'metrics' in summary and summary['metrics'].get('score_summary'):
+            metrics = summary['metrics']['score_summary']
+            print(f"📈 Final Score: {metrics.get('total_score', 'N/A')}/{metrics.get('max_possible_score', 'N/A')} ({metrics.get('success_rate', 0):.1f}%)")
+            print(f"🧪 Test Success: {metrics.get('test_success_rate', 0):.1f}%")
+            print(f"⚙️  Compilation Success: {metrics.get('compilation_success_rate', 0):.1f}%")
+            
+            if summary['metrics'].get('reports_generated'):
+                print(f"📋 Generated {len(summary['metrics']['reports_generated'])} detailed reports")
         
         # Save summary to file
         import json
         summary_file = Path(__file__).parent.parent / "epochs" / args.epoch / "evaluation_summary.json"
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
-        print(f"📁 Summary saved to: {summary_file}")
+        print(f"💾 Complete summary saved to: {summary_file}")
+        
+        print(f"\n✨ {args.epoch} evaluation is fully self-contained - all tasks, validation, and metrics complete!")
         
     except Exception as e:
         print(f"❌ Evaluation failed: {e}")

@@ -1,6 +1,0 @@
-task_name,status,total_score,max_possible_score,success_rate,compilation_score,test_score,execution_time,output_files_count,error_message,job_id
-task-001,missing_evaluation,0,2,0.0,0,0,0.0,0,No evaluation job found,
-task-002,missing_evaluation,0,2,0.0,0,0,0.0,0,No evaluation job found,
-task-003,missing_evaluation,0,2,0.0,0,0,0.0,0,No evaluation job found,
-task-004,missing_evaluation,0,2,0.0,0,0,0.0,0,No evaluation job found,
-task-005,missing_evaluation,0,2,0.0,0,0,0.0,0,No evaluation job found,

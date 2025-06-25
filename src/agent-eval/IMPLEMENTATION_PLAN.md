@@ -114,7 +114,7 @@
 - [x] Comprehensive test suite and documentation
 
 ### Step 10: End-to-End Evaluation Pipeline 🔄
-**Status**: Needs Revision
+**Status**: Needs Revision → ⏳ In Progress (Testing Framework Implementation)
 **Objective**: Complete automated pipeline: task execution → validation → metrics
 **Current Issues**:
 - evaluate_epoch.py doesn't automatically trigger validation jobs
@@ -122,6 +122,7 @@
 - Scoring system needs update (2-point → 3-point system)
 - Runtime files mixed with source code (poor organization)
 - Debug scripts scattered throughout codebase
+- **CRITICAL**: Queue system reliability issues requiring comprehensive testing
 
 **Revised Deliverables**:
 - [x] Pipeline chaining: automatically enqueue validation jobs after task completion
@@ -129,7 +130,20 @@
 - [x] Update scoring system: 1pt task completion + 1pt no errors + 1pt tests pass
 - [x] Reorganize file structure: separate runtime/logs from source code
 - [x] Consolidate debug/test scripts
+- [ ] **NEW**: Implement comprehensive testing framework (see TESTING_FRAMEWORK_PLAN.md)
+- [ ] **NEW**: Create robust test suite covering all failure modes
+- [ ] **NEW**: Establish automated testing for future changes
 - [x] Test complete end-to-end pipeline
+
+### Step 10.1: Testing Framework Implementation ⏳
+**Status**: In Progress
+**Objective**: Build robust testing infrastructure to ensure system reliability
+**Deliverables**:
+- [ ] Phase 1: Foundation - Test structure, utilities, basic unit tests
+- [ ] Phase 2: Core Testing - Complete unit tests, system tests, recovery tests
+- [ ] Phase 3: Advanced Testing - Stress tests, continuous testing, error scenarios
+- [ ] Phase 4: Integration - Documentation, procedures, automation
+- [ ] Easy-to-run test execution system for validating changes
 
 ## Phase 3: Evolution System (Steps 11-15)
 

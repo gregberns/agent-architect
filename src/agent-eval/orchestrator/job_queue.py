@@ -72,7 +72,7 @@ class Job:
     
     def can_retry(self) -> bool:
         """Check if job can be retried"""
-        return self.retry_count < self.max_retries and self.status == JobStatus.FAILED
+        return self.retry_count < self.max_retries
     
     def mark_running(self, worker_id: str):
         """Mark job as running"""
@@ -219,6 +219,8 @@ class JobQueue:
             
             if jobs_to_remove:
                 self.save_to_file()
+            
+            return len(jobs_to_remove)
     
     def retry_failed_jobs(self) -> int:
         """Retry all retryable failed jobs"""
@@ -335,8 +337,17 @@ class JobQueue:
                 # Parse JSON
                 data = json.loads(content)
                 jobs_data = data.get('jobs', {})
-                self.jobs = {job_id: Job.from_dict(job_data) 
-                            for job_id, job_data in jobs_data.items()}
+                
+                # Load jobs one by one, skipping corrupted ones
+                self.jobs = {}
+                for job_id, job_data in jobs_data.items():
+                    try:
+                        self.jobs[job_id] = Job.from_dict(job_data)
+                    except (KeyError, ValueError, TypeError) as job_error:
+                        # Skip corrupted job but log the issue
+                        print(f"Warning: Skipping corrupted job {job_id}: {job_error}")
+                        continue
+                        
                 return  # Success
                 
             except (json.JSONDecodeError, ValueError) as e:
