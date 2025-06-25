@@ -5,6 +5,10 @@ _opam
 dist/
 coverage
 
+__pycache__/
+.pyc
+.log
+
 .env
 
 # File type Serena uses
