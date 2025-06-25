@@ -5,6 +5,7 @@ Evaluate Epoch - orchestrate evaluation of an epoch against all default tasks
 
 import os
 import sys
+import json
 import shutil
 import argparse
 import time
@@ -500,29 +501,14 @@ class EpochEvaluator:
             
             print(f"   📋 Generating detailed reports...")
             try:
-                # Generate detailed report
-                report_data = report_generator.generate_epoch_report(epoch_name)
-                metrics_summary['detailed_report'] = report_data
+                # Generate detailed report (this already saves files and returns paths)
+                report_files = report_generator.generate_epoch_report(epoch_name)
+                metrics_summary['detailed_report'] = report_files
                 
-                # Save reports to files
-                epoch_dir = self.base_dir / "epochs" / epoch_name / "metrics"
-                epoch_dir.mkdir(parents=True, exist_ok=True)
-                
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                
-                # Save JSON report
-                json_report_file = epoch_dir / f"{epoch_name}_report_{timestamp}.json"
-                with open(json_report_file, 'w') as f:
-                    json.dump(report_data, f, indent=2, default=str)
-                metrics_summary['reports_generated'].append(str(json_report_file))
-                print(f"   💾 Saved JSON report: {json_report_file.name}")
-                
-                # Save CSV report if task-level data is available
-                if 'task_results' in report_data:
-                    csv_report_file = epoch_dir / f"{epoch_name}_tasks_{timestamp}.csv"
-                    report_generator.save_tasks_csv(report_data['task_results'], csv_report_file)
-                    metrics_summary['reports_generated'].append(str(csv_report_file))
-                    print(f"   💾 Saved CSV report: {csv_report_file.name}")
+                # Add generated files to the list
+                for format_type, file_path in report_files.items():
+                    metrics_summary['reports_generated'].append(file_path)
+                    print(f"   💾 Saved {format_type.upper()} report: {Path(file_path).name}")
                 
             except Exception as e:
                 print(f"   ⚠️  Report generation failed: {e}")

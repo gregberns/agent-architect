@@ -319,6 +319,86 @@ class EpochAnalyzer:
             recommendations.append("Performance has plateaued across multiple metrics. Consider new evolution strategies or increased exploration.")
         
         return recommendations
+    
+    def analyze_epoch(self, epoch_name: str) -> Dict[str, Any]:
+        """
+        Perform comprehensive analysis of a single epoch
+        
+        Returns:
+            Dictionary with comprehensive epoch analysis
+        """
+        try:
+            # Get basic epoch score
+            epoch_score = self.calculator.calculate_epoch_score(epoch_name)
+            
+            analysis = {
+                'epoch_name': epoch_name,
+                'analyzed_at': datetime.now().isoformat(),
+                'overall_performance': {
+                    'total_score': epoch_score.total_score,
+                    'max_possible_score': epoch_score.max_possible_score,
+                    'success_rate': epoch_score.success_rate,
+                    'completed_tasks': epoch_score.completed_tasks,
+                    'total_tasks': epoch_score.total_tasks,
+                    'compilation_success_rate': epoch_score.compilation_success_rate,
+                    'test_success_rate': epoch_score.test_success_rate
+                },
+                'task_breakdown': {},
+                'performance_insights': {},
+                'recommendations': []
+            }
+            
+            # Analyze individual tasks
+            for task_name, task_score in epoch_score.task_scores.items():
+                analysis['task_breakdown'][task_name] = {
+                    'status': task_score.status,
+                    'total_score': task_score.total_score,
+                    'compilation_score': task_score.compilation_score,
+                    'test_score': task_score.test_score,
+                    'error_message': task_score.error_message
+                }
+            
+            # Generate performance insights
+            analysis['performance_insights'] = {
+                'strong_areas': [],
+                'weak_areas': [],
+                'completion_rate': (epoch_score.completed_tasks / epoch_score.total_tasks) * 100 if epoch_score.total_tasks > 0 else 0
+            }
+            
+            # Identify strong and weak areas
+            if epoch_score.compilation_success_rate >= 80:
+                analysis['performance_insights']['strong_areas'].append('Code compilation')
+            elif epoch_score.compilation_success_rate < 50:
+                analysis['performance_insights']['weak_areas'].append('Code compilation')
+                
+            if epoch_score.test_success_rate >= 80:
+                analysis['performance_insights']['strong_areas'].append('Test execution')
+            elif epoch_score.test_success_rate < 50:
+                analysis['performance_insights']['weak_areas'].append('Test execution')
+            
+            # Generate single-epoch recommendations
+            if epoch_score.success_rate < 50:
+                analysis['recommendations'].append("Overall performance is below 50%. Consider reviewing task complexity and agent capabilities.")
+            elif epoch_score.success_rate >= 80:
+                analysis['recommendations'].append("Strong performance achieved. Consider increasing task complexity for continued growth.")
+            
+            if epoch_score.compilation_success_rate < epoch_score.test_success_rate:
+                analysis['recommendations'].append("Compilation issues are the primary blocker. Focus on syntax and API usage training.")
+            elif epoch_score.test_success_rate < epoch_score.compilation_success_rate:
+                analysis['recommendations'].append("Code compiles well but fails tests. Focus on logic and requirement understanding.")
+            
+            return analysis
+            
+        except Exception as e:
+            return {
+                'epoch_name': epoch_name,
+                'analyzed_at': datetime.now().isoformat(),
+                'error': f"Analysis failed: {e}",
+                'overall_performance': None,
+                'task_breakdown': {},
+                'performance_insights': {},
+                'recommendations': [f"Could not analyze epoch {epoch_name}: {e}"]
+            }
 
 def main():
     """CLI interface for epoch analysis"""

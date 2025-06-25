@@ -33,13 +33,24 @@ def run_unit_tests() -> TestResults:
     print("=" * 60)
     
     # Import and run unit tests
+    results = []
+    
     try:
         from unit.test_job_queue import run_job_queue_tests
-        results = run_job_queue_tests()
-        return results
+        results.append(run_job_queue_tests())
     except ImportError as e:
-        print(f"❌ Failed to import unit tests: {e}")
-        return TestResults(0, 1, [f"Import error: {e}"], 0)
+        print(f"❌ Failed to import job queue tests: {e}")
+        results.append(TestResults(0, 1, [f"Job queue import error: {e}"], 0))
+    
+    try:
+        from unit.test_metrics_generation import run_metrics_generation_tests
+        results.append(run_metrics_generation_tests())
+    except ImportError as e:
+        print(f"❌ Failed to import metrics generation tests: {e}")
+        results.append(TestResults(0, 1, [f"Metrics import error: {e}"], 0))
+    
+    # Combine all unit test results
+    return combine_results(results)
 
 
 def run_integration_tests() -> TestResults:
