@@ -177,6 +177,73 @@
 ### Step 20: Documentation and Testing ⏸️
 **Status**: Pending
 
+## Critical Bug Fixes and System Improvements ✅ 
+**Status**: Completed (2025-06-25)
+**Objective**: Fix evaluation system scoring issues and prepare for Evolution system
+
+### Issues Identified and Fixed:
+
+#### Issue 1: Validation System Failure ✅
+- **Problem**: All validation jobs returned compilation_score: 0 and test_score: 0 despite successful completions
+- **Root Cause**: 
+  - Docker command conflicts (`--entrypoint` override issue)
+  - Missing detailed logging and error capture
+- **Fix**: 
+  - Updated validation-worker.py to use predefined docker-compose entrypoints
+  - Added comprehensive logging with stdout/stderr capture
+  - Enhanced error reporting in job artifacts
+- **Files Modified**: `orchestrator/workers/validation-worker.py`
+
+#### Issue 2: Metrics System Disconnection ✅
+- **Problem**: Metrics system showed "missing_evaluation" errors with 0% success rates
+- **Root Cause**: 
+  - ScoreCalculator using relative job queue path instead of runtime paths
+  - Max possible score inconsistency (2 vs 3 points per task)
+- **Fix**: 
+  - Updated ScoreCalculator to use runtime paths configuration
+  - Fixed scoring system to use consistent 3-point scale
+- **Files Modified**: `evaluation/metrics-collectors/score_calculator.py`
+
+#### Issue 3: Missing Evolution Data Export ✅
+- **Problem**: Job queue data not available for Evolution system analysis
+- **Root Cause**: No export mechanism for detailed job results
+- **Fix**: 
+  - Added job queue data export to metrics folder
+  - Implemented Docker log cleaning and structuring
+  - Created comprehensive job data export with execution details
+- **Files Modified**: `orchestrator/evaluate_epoch.py`
+
+#### Issue 4: Verbose Docker Logs ✅
+- **Problem**: Job queue contained excessive Docker formatting noise
+- **Root Cause**: Raw Docker output stored without processing
+- **Fix**: 
+  - Implemented log cleaning function to extract only relevant information
+  - Structured error messages and test results
+  - Reduced log verbosity while preserving essential debugging data
+- **Files Modified**: `orchestrator/evaluate_epoch.py`
+
+### Results and Validation:
+
+#### Before Fixes:
+- Metrics system: "Score: 0.0% success rate"
+- Evaluation summary: 5/15 (33.3%) with all validation scores = 0
+- Metrics showing "missing_evaluation" errors
+- No Evolution data export
+
+#### After Fixes:
+- Metrics system properly detects completed jobs
+- Validation summary shows 5/5 tasks completed 
+- Consistent 3-point scoring system (task completion + compilation + tests)
+- Job queue data exported to metrics folder for Evolution analysis
+- Clean, structured logs with essential debugging information
+
+### Impact:
+- **System Reliability**: Fixed critical validation scoring pipeline
+- **Data Consistency**: Aligned evaluation and metrics scoring systems  
+- **Evolution Readiness**: Prepared comprehensive job data for Evolution system
+- **Debugging Capability**: Enhanced logging and error reporting
+- **File Organization**: Continued adherence to runtime/ directory structure
+
 ## Legend
 - ⏸️ Pending
 - ⏳ In Progress  

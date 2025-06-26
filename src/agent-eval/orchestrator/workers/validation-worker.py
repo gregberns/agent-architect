@@ -119,10 +119,13 @@ class ValidationWorker:
             # Create a shell command to compile all Python files
             py_file_paths = [f"/app/workspace/output/{f.name}" for f in py_files]
             
+            compile_stdout = ""
+            compile_stderr = ""
+            
             try:
+                # Use the predefined entrypoint from docker-compose.yml (sh)
                 compile_result = subprocess.run(
-                    ["docker-compose", "-p", project_name, "run", "--rm", 
-                     "--entrypoint", "sh",
+                    ["docker-compose", "-p", project_name, "run", "--rm",
                      "validation-compile", "-c", 
                      f"python -m py_compile {' '.join(py_file_paths)}"],
                     cwd=agent_src_dir,
@@ -132,18 +135,32 @@ class ValidationWorker:
                     timeout=60
                 )
                 
+                compile_stdout = compile_result.stdout
+                compile_stderr = compile_result.stderr
+                
+                print(f"    🔍 Compilation result: return_code={compile_result.returncode}")
+                if compile_result.stdout:
+                    print(f"    📤 STDOUT: {compile_result.stdout[:200]}...")
+                if compile_result.stderr and "warning" not in compile_result.stderr.lower():
+                    print(f"    📤 STDERR: {compile_result.stderr[:200]}...")
+                
                 if compile_result.returncode == 0:
                     compilation_score = 1
                     print(f"    ✅ All {total_files} files compile successfully")
                 else:
-                    print(f"    ❌ Compilation failed: {compile_result.stderr}")
+                    print(f"    ❌ Compilation failed with return code {compile_result.returncode}")
                     
             except subprocess.TimeoutExpired:
                 print(f"    ❌ Compilation timed out after 60 seconds")
+                compile_stderr = "Compilation timeout"
             except Exception as e:
                 print(f"    ❌ Compilation error: {e}")
+                compile_stderr = str(e)
             
             # Step 2: Run tests using docker-compose
+            test_stdout = ""
+            test_stderr = ""
+            
             if tests_dir.exists() and list(tests_dir.glob("test_*.py")):
                 print(f"    🧪 Running tests...")
                 
@@ -157,20 +174,30 @@ class ValidationWorker:
                         timeout=self.config.timeouts.validation_timeout
                     )
                     
+                    test_stdout = test_result.stdout
+                    test_stderr = test_result.stderr
+                    
+                    print(f"    🧪 Test result: return_code={test_result.returncode}")
+                    if test_result.stdout:
+                        print(f"    📤 TEST STDOUT: {test_result.stdout[:300]}...")
+                    if test_result.stderr:
+                        print(f"    📤 TEST STDERR: {test_result.stderr[:300]}...")
+                    
                     if test_result.returncode == 0:
                         test_score = 1
                         print(f"    ✅ All tests passed")
                     else:
-                        print(f"    ❌ Tests failed:")
-                        print(f"        STDOUT: {test_result.stdout}")
-                        print(f"        STDERR: {test_result.stderr}")
+                        print(f"    ❌ Tests failed with return code {test_result.returncode}")
                         
                 except subprocess.TimeoutExpired:
                     print(f"    ❌ Tests timed out after {self.config.timeouts.validation_timeout} seconds")
+                    test_stderr = "Test timeout"
                 except Exception as e:
                     print(f"    ❌ Test execution error: {e}")
+                    test_stderr = str(e)
             else:
                 print(f"    ⚠️  No tests found in {tests_dir}")
+                test_stderr = f"No tests found in {tests_dir}"
             
             execution_time = time.time() - start_time
             total_score = compilation_score + test_score
@@ -186,7 +213,11 @@ class ValidationWorker:
                     'total_files': total_files,
                     'output_files': [str(f) for f in py_files],
                     'validation_method': 'docker-compose',
-                    'execution_time': execution_time
+                    'execution_time': execution_time,
+                    'compile_stdout': compile_stdout,
+                    'compile_stderr': compile_stderr,
+                    'test_stdout': test_stdout,
+                    'test_stderr': test_stderr
                 }
             )
             

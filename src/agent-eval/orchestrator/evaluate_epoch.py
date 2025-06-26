@@ -83,6 +83,10 @@ class EpochEvaluator:
         # Generate summary
         summary = self._generate_evaluation_summary(epoch_name, results, validation_results)
         
+        # Export job queue data for Evolution analysis
+        print("💾 Exporting job queue data for Evolution analysis...")
+        self._export_job_queue_data(epoch_name, results, validation_results)
+        
         # Automatically generate metrics after evaluation is complete (if enabled)
         if generate_metrics:
             print("📊 Generating comprehensive metrics...")
@@ -457,6 +461,129 @@ class EpochEvaluator:
             print(f"   ✅ Scoring complete with validation results")
         
         return summary
+    
+    def _export_job_queue_data(self, epoch_name: str, 
+                              evaluation_results: Dict[str, Any], 
+                              validation_results: Dict[str, Any]) -> None:
+        """
+        Export detailed job queue data to metrics folder for Evolution analysis
+        """
+        try:
+            # Create metrics directory
+            metrics_dir = self.base_dir / "epochs" / epoch_name / "metrics"
+            metrics_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Collect all relevant job data
+            job_export_data = {
+                'epoch': epoch_name,
+                'exported_at': datetime.now().isoformat(),
+                'evaluation_jobs': {},
+                'validation_jobs': {},
+                'job_queue_summary': {
+                    'total_evaluation_jobs': len(evaluation_results),
+                    'total_validation_jobs': len(validation_results),
+                    'successful_evaluations': sum(1 for job in evaluation_results.values() if job.status.value == 'completed'),
+                    'successful_validations': sum(1 for job in validation_results.values() if job.status.value == 'completed')
+                }
+            }
+            
+            # Export evaluation job details
+            for job_id, job in evaluation_results.items():
+                task_name = job.parameters.get('task', 'unknown')
+                job_export_data['evaluation_jobs'][task_name] = {
+                    'job_id': job_id,
+                    'status': job.status.value,
+                    'parameters': job.parameters,
+                    'created_at': job.created_at,
+                    'started_at': job.started_at,
+                    'completed_at': job.completed_at,
+                    'execution_time': job.result.execution_time if job.result else 0,
+                    'success': job.result.success if job.result else False,
+                    'output': job.result.output if job.result else "",
+                    'error': job.result.error if job.result else "",
+                    'output_files': job.result.artifacts.get('output_files', []) if job.result and job.result.artifacts else [],
+                    'return_code': job.result.artifacts.get('return_code') if job.result and job.result.artifacts else None,
+                    'retry_count': getattr(job, 'retry_count', 0)
+                }
+            
+            # Export validation job details (with cleaner Docker logs)
+            for job_id, job in validation_results.items():
+                task_name = job.parameters.get('task', 'unknown')
+                validation_data = {
+                    'job_id': job_id,
+                    'evaluation_job_id': job.parameters.get('evaluation_job_id'),
+                    'status': job.status.value,
+                    'parameters': job.parameters,
+                    'created_at': job.created_at,
+                    'started_at': job.started_at,
+                    'completed_at': job.completed_at,
+                    'execution_time': job.result.execution_time if job.result else 0,
+                    'success': job.result.success if job.result else False,
+                    'compilation_score': 0,
+                    'test_score': 0,
+                    'total_score': 0,
+                    'validation_method': 'docker-compose'
+                }
+                
+                if job.result and job.result.artifacts:
+                    artifacts = job.result.artifacts
+                    validation_data.update({
+                        'compilation_score': artifacts.get('compilation_score', 0),
+                        'test_score': artifacts.get('test_score', 0), 
+                        'total_score': artifacts.get('total_score', 0),
+                        'total_files': artifacts.get('total_files', 0),
+                        'output_files': artifacts.get('output_files', []),
+                        'validation_method': artifacts.get('validation_method', 'docker-compose'),
+                        # Clean up Docker logs - keep only essential info
+                        'compile_success': artifacts.get('compilation_score', 0) > 0,
+                        'test_success': artifacts.get('test_score', 0) > 0,
+                        'compile_logs': self._clean_docker_logs(artifacts.get('compile_stdout', '')),
+                        'test_logs': self._clean_docker_logs(artifacts.get('test_stdout', '')),
+                        'errors': artifacts.get('compile_stderr', '') + artifacts.get('test_stderr', '')
+                    })
+                
+                job_export_data['validation_jobs'][task_name] = validation_data
+            
+            # Save to file
+            export_file = metrics_dir / f"{epoch_name}_job_data.json"
+            with open(export_file, 'w') as f:
+                json.dump(job_export_data, f, indent=2, default=str)
+            
+            print(f"   💾 Job queue data exported to: {export_file.name}")
+            
+        except Exception as e:
+            print(f"   ⚠️  Failed to export job queue data: {e}")
+    
+    def _clean_docker_logs(self, logs: str) -> str:
+        """
+        Clean up Docker logs by removing verbose formatting and keeping only essential information
+        """
+        if not logs:
+            return ""
+        
+        lines = logs.split('\n')
+        cleaned_lines = []
+        
+        for line in lines:
+            # Skip empty lines and Docker formatting noise
+            if (not line.strip() or 
+                line.startswith('#') or 
+                'sha256:' in line or 
+                'transferring' in line or 
+                'CACHED' in line or
+                'exporting layers' in line or
+                'naming to docker.io' in line):
+                continue
+            
+            # Keep test results, compilation results, and error messages
+            if any(keyword in line for keyword in [
+                'FAILED', 'PASSED', 'ERROR', 'WARNING', 
+                'test session starts', 'failed in', 'passed in',
+                'ModuleNotFoundError', 'ImportError', 'SyntaxError',
+                'collected', 'items']):
+                cleaned_lines.append(line.strip())
+        
+        return '\n'.join(cleaned_lines[:20])  # Keep max 20 relevant lines
     
     def _generate_comprehensive_metrics(self, epoch_name: str) -> Dict[str, Any]:
         """

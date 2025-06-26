@@ -72,8 +72,12 @@ class ScoreCalculator:
     
     def __init__(self, config_path: str = None):
         self.config = load_config(config_path)
-        self.job_queue = JobQueue(self.config.job_queue_file)
         self.base_dir = Path(__file__).parent.parent.parent
+        
+        # Use runtime paths for job queue file
+        runtime_paths = self.config.get_runtime_paths(self.base_dir)
+        job_queue_path = runtime_paths['state'] / self.config.job_queue_file
+        self.job_queue = JobQueue(str(job_queue_path))
     
     def calculate_task_score(self, epoch: str, task_name: str) -> TaskScore:
         """
@@ -171,7 +175,7 @@ class ScoreCalculator:
         epoch_score = EpochScore(
             epoch=epoch,
             total_tasks=len(task_names),
-            max_possible_score=len(task_names) * 2  # 2 points per task
+            max_possible_score=len(task_names) * 3  # 3 points per task (completion + compilation + tests)
         )
         
         compilation_successes = 0
