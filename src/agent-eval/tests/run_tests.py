@@ -49,6 +49,13 @@ def run_unit_tests() -> TestResults:
         print(f"❌ Failed to import metrics generation tests: {e}")
         results.append(TestResults(0, 1, [f"Metrics import error: {e}"], 0))
     
+    try:
+        from unit.test_file_organization import run_file_organization_tests
+        results.append(run_file_organization_tests())
+    except ImportError as e:
+        print(f"❌ Failed to import file organization tests: {e}")
+        results.append(TestResults(0, 1, [f"File organization import error: {e}"], 0))
+    
     # Combine all unit test results
     return combine_results(results)
 

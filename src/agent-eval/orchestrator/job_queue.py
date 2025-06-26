@@ -134,7 +134,11 @@ class Job:
 
 class JobQueue:
     def __init__(self, persistence_file: str = "job_queue.json"):
-        self.persistence_file = Path(persistence_file)
+        # Handle both absolute and relative paths
+        if Path(persistence_file).is_absolute():
+            self.persistence_file = Path(persistence_file)
+        else:
+            self.persistence_file = Path(persistence_file)
         self.jobs: Dict[str, Job] = {}
         self._lock = threading.RLock()
         self.load_from_file()

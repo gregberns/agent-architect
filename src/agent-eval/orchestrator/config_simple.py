@@ -26,6 +26,22 @@ class RateLimitingConfig:
             self.retry_backoff_seconds = [1, 2, 4, 8, 16]
 
 @dataclass
+class RuntimePathsConfig:
+    runtime_dir: str = "runtime"
+    logs_dir: str = "runtime/logs"
+    state_dir: str = "runtime/state"
+    temp_dir: str = "runtime/temp"
+    
+    def get_absolute_paths(self, base_dir: Path) -> Dict[str, Path]:
+        """Get absolute paths based on base directory"""
+        return {
+            'runtime': base_dir / self.runtime_dir,
+            'logs': base_dir / self.logs_dir,
+            'state': base_dir / self.state_dir,
+            'temp': base_dir / self.temp_dir
+        }
+
+@dataclass
 class TimeoutConfig:
     task_execution_timeout: int = 300  # 5 minutes
     evolution_timeout: int = 1800      # 30 minutes
@@ -37,7 +53,8 @@ class OrchestratorConfig:
     parallelism: ParallelismConfig
     rate_limiting: RateLimitingConfig
     timeouts: TimeoutConfig
-    job_queue_file: str = "job_queue.json"
+    runtime_paths: RuntimePathsConfig
+    job_queue_file: str = "job_queue.json"  # Will be relative to state_dir
     log_level: str = "INFO"
     
     @classmethod
@@ -57,6 +74,7 @@ class OrchestratorConfig:
             parallelism=ParallelismConfig(**data.get('parallelism', {})),
             rate_limiting=RateLimitingConfig(**data.get('rate_limiting', {})),
             timeouts=TimeoutConfig(**data.get('timeouts', {})),
+            runtime_paths=RuntimePathsConfig(**data.get('runtime_paths', {})),
             job_queue_file=data.get('job_queue_file', 'job_queue.json'),
             log_level=data.get('log_level', 'INFO')
         )
@@ -67,7 +85,8 @@ class OrchestratorConfig:
         return cls(
             parallelism=ParallelismConfig(),
             rate_limiting=RateLimitingConfig(),
-            timeouts=TimeoutConfig()
+            timeouts=TimeoutConfig(),
+            runtime_paths=RuntimePathsConfig()
         )
     
     def save_json(self, json_path: str):
@@ -79,6 +98,13 @@ class OrchestratorConfig:
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
         return asdict(self)
+    
+    def get_runtime_paths(self, base_dir: Path = None) -> Dict[str, Path]:
+        """Get runtime paths relative to base directory"""
+        if base_dir is None:
+            # Default to parent of orchestrator directory (agent-eval root)
+            base_dir = Path(__file__).parent.parent
+        return self.runtime_paths.get_absolute_paths(base_dir)
 
 def load_config(config_path: str = None) -> OrchestratorConfig:
     """Load configuration from file or create default"""

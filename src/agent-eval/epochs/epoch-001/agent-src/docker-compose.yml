@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: agent-eval-${TASK_ID:-default}
+    env_file:
+      - .env
+    volumes:
+      # Mount specific task workspace directory from epoch runs - use TASK_ID environment variable
+      - ../runs/${TASK_ID:-task-001}:/app/workspace
+      # Mount logs to task output directory
+      - ../runs/${TASK_ID:-task-001}/output:/app/logs
+    # Remove the tty and stdin_open since this is likely a batch process
+    # tty: true
+    # stdin_open: true
+    # Optional: set restart policy
+    restart: "no"
+
+  # Validation service for compilation checks
+  validation-compile:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: validation-compile-${TASK_ID:-default}
+    volumes:
+      # Mount the task workspace for validation
+      - ../runs/${TASK_ID:-task-001}:/app/workspace
+    # Override entrypoint to run shell (will be invoked with custom command)
+    entrypoint: ["sh"]
+    # Default command - will be overridden by docker-compose run
+    command: ["-c", "echo 'Validation compile service ready'"]
+    restart: "no"
+
+  # Validation service for test execution
+  validation-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: validation-test-${TASK_ID:-default}
+    volumes:
+      # Mount the task workspace for validation
+      - ../runs/${TASK_ID:-task-001}:/app/workspace
+    # Override entrypoint to run pytest directly
+    entrypoint: ["python", "-m", "pytest"]
+    # Run tests with verbose output
+    command: ["/app/workspace/tests/", "-v", "--tb=short"]
+    working_dir: "/app/workspace"
+    restart: "no"

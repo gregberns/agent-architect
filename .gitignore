@@ -5,10 +5,6 @@ _opam
 dist/
 coverage
 
-__pycache__/
-.pyc
-.log
-
 .env
 
 # File type Serena uses
@@ -17,3 +13,38 @@ __pycache__/
 .mcp.json
 
 data
+
+# Runtime files - should not be committed
+runtime/
+*.pid
+*_status.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+*.temp

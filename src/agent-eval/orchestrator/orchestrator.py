@@ -23,10 +23,11 @@ from config_simple import load_config, OrchestratorConfig
 class WorkerProcess:
     """Represents a worker process"""
     
-    def __init__(self, worker_id: str, worker_type: str, script_path: str):
+    def __init__(self, worker_id: str, worker_type: str, script_path: str, log_dir: Path = None):
         self.worker_id = worker_id
         self.worker_type = worker_type
         self.script_path = script_path
+        self.log_dir = log_dir or Path(".")
         self.process: Optional[subprocess.Popen] = None
         self.started_at: Optional[datetime] = None
         self.current_job_id: Optional[str] = None
@@ -35,20 +36,29 @@ class WorkerProcess:
     def start(self) -> bool:
         """Start the worker process"""
         try:
+            # Setup log files for worker output
+            worker_log_file = self.log_dir / f"worker-{self.worker_id}.log"
+            
             # Start worker process with environment variables
             env = os.environ.copy()
             env['WORKER_ID'] = self.worker_id
             env['WORKER_TYPE'] = self.worker_type
             
+            # Open log file for worker output
+            log_file = open(worker_log_file, 'a')
+            
             self.process = subprocess.Popen(
                 [sys.executable, self.script_path],
                 env=env,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=log_file,
                 stdin=subprocess.DEVNULL,
                 text=True,
                 start_new_session=True
             )
+            
+            # Store log file handle for cleanup
+            self.log_file = log_file
             
             self.started_at = datetime.now()
             print(f"Started worker {self.worker_id} (PID: {self.process.pid})")
@@ -105,15 +115,25 @@ class Orchestrator:
     
     def __init__(self, config_path: str = None):
         self.config = load_config(config_path)
-        self.job_queue = JobQueue(self.config.job_queue_file)
+        
+        # Get runtime paths from config
+        self.base_dir = Path(__file__).parent.parent  # agent-eval root
+        self.runtime_paths = self.config.get_runtime_paths(self.base_dir)
+        
+        # Ensure runtime directories exist
+        for path in self.runtime_paths.values():
+            path.mkdir(parents=True, exist_ok=True)
+        
+        # Job queue with new location
+        job_queue_path = self.runtime_paths['state'] / self.config.job_queue_file
+        self.job_queue = JobQueue(str(job_queue_path))
         self.workers: Dict[str, WorkerProcess] = {}
         self.running = False
         self.monitor_thread: Optional[threading.Thread] = None
         
-        # Status persistence
-        self.base_dir = Path(__file__).parent
-        self.status_file = self.base_dir / "orchestrator_status.json"
-        self.pid_file = self.base_dir / "orchestrator.pid"
+        # Status persistence files
+        self.status_file = self.runtime_paths['state'] / "orchestrator_status.json"
+        self.pid_file = self.runtime_paths['state'] / "orchestrator.pid"
         
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -176,6 +196,7 @@ class Orchestrator:
     def _start_workers(self):
         """Start worker processes based on configuration"""
         workers_dir = Path(__file__).parent / "workers"
+        workers_log_dir = self.runtime_paths['logs'] / "workers"
         
         # Task evaluation workers
         for i in range(self.config.parallelism.task_evaluation_workers):
@@ -183,7 +204,7 @@ class Orchestrator:
             script_path = workers_dir / "task-worker-debug.py"
             
             if script_path.exists():
-                worker = WorkerProcess(worker_id, "task_evaluation", str(script_path))
+                worker = WorkerProcess(worker_id, "task_evaluation", str(script_path), workers_log_dir)
                 if worker.start():
                     self.workers[worker_id] = worker
             else:
@@ -195,7 +216,7 @@ class Orchestrator:
             script_path = workers_dir / "evolution-worker.py"
             
             if script_path.exists():
-                worker = WorkerProcess(worker_id, "evolution", str(script_path))
+                worker = WorkerProcess(worker_id, "evolution", str(script_path), workers_log_dir)
                 if worker.start():
                     self.workers[worker_id] = worker
             else:
@@ -207,7 +228,7 @@ class Orchestrator:
             script_path = workers_dir / "validation-worker.py"
             
             if script_path.exists():
-                worker = WorkerProcess(worker_id, "validation", str(script_path))
+                worker = WorkerProcess(worker_id, "validation", str(script_path), workers_log_dir)
                 if worker.start():
                     self.workers[worker_id] = worker
             else:
@@ -241,7 +262,8 @@ class Orchestrator:
                     new_worker = WorkerProcess(
                         old_worker.worker_id,
                         old_worker.worker_type,
-                        old_worker.script_path
+                        old_worker.script_path,
+                        self.runtime_paths['logs'] / "workers"
                     )
                     
                     if new_worker.start():
