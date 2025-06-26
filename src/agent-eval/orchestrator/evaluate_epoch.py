@@ -24,8 +24,13 @@ class EpochEvaluator:
     
     def __init__(self, config_path: str = None):
         self.config = load_config(config_path)
-        self.job_queue = JobQueue(self.config.job_queue_file)
+        
+        # Use runtime paths for job queue file
         self.base_dir = Path(__file__).parent.parent
+        runtime_paths = self.config.get_runtime_paths(self.base_dir)
+        job_queue_path = runtime_paths['state'] / self.config.job_queue_file
+        
+        self.job_queue = JobQueue(str(job_queue_path))
     
     def evaluate_epoch(self, epoch_name: str, parallel: bool = True, generate_metrics: bool = True) -> Dict[str, Any]:
         """

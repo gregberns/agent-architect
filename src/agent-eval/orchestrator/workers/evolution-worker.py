@@ -20,7 +20,13 @@ class EvolutionWorker:
     def __init__(self, worker_id: str):
         self.worker_id = worker_id
         self.config = load_config()
-        self.job_queue = JobQueue(self.config.job_queue_file)
+        
+        # Use runtime paths for job queue file
+        agent_eval_root = Path(__file__).parent.parent.parent  # Go up to agent-eval root
+        runtime_paths = self.config.get_runtime_paths(agent_eval_root)
+        job_queue_path = runtime_paths['state'] / self.config.job_queue_file
+        
+        self.job_queue = JobQueue(str(job_queue_path))
         self.running = True
     
     def run(self):

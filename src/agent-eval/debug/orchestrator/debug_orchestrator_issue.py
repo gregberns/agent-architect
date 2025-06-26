@@ -50,8 +50,10 @@ def main():
     
     # Step 3: Check if worker log files exist
     print(f"\n3. Checking for worker log files...")
-    log_dir = Path(__file__).parent
-    log_files = list(log_dir.glob("worker-*.log"))
+    # Updated to use new runtime directory structure
+    agent_eval_root = Path(__file__).parent.parent.parent
+    log_dir = agent_eval_root / "runtime" / "logs" / "workers"
+    log_files = list(log_dir.glob("worker-*.log")) if log_dir.exists() else []
     print(f"   Found {len(log_files)} worker log files:")
     for log_file in log_files:
         print(f"     - {log_file.name}")

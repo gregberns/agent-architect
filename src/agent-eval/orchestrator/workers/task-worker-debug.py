@@ -25,16 +25,24 @@ class TaskWorkerDebug:
         self.running = True
         self.setup_signal_handlers()
         
-        # Setup file-based logging
-        self.log_file = Path(__file__).parent.parent / f"worker-{worker_id}.log"
-        self.log(f"INIT: Task worker {worker_id} initializing...")
-        
         # Force initialize everything in try/catch to prevent startup errors
         try:
-            self.log("INIT: Loading config...")
+            # Load config first to get runtime paths
             self.config = load_config()
+            
+            # Setup file-based logging with runtime paths
+            agent_eval_root = Path(__file__).parent.parent.parent  # Go up to agent-eval root
+            runtime_paths = self.config.get_runtime_paths(agent_eval_root)
+            
+            # Ensure workers log directory exists
+            workers_log_dir = runtime_paths['logs'] / 'workers'
+            workers_log_dir.mkdir(parents=True, exist_ok=True)
+            
+            self.log_file = workers_log_dir / f"worker-{worker_id}.log"
+            self.log(f"INIT: Task worker {worker_id} initializing...")
+            self.log("INIT: Loading config... ✅")
             self.log("INIT: Creating job queue...")
-            self.job_queue = JobQueue(self.config.job_queue_file)
+            self.job_queue = JobQueue(str(runtime_paths['state'] / self.config.job_queue_file))
             self.log("INIT: Initialization complete")
         except Exception as e:
             self.log(f"FATAL: Task worker {worker_id} init failed: {e}")
