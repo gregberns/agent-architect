@@ -831,58 +831,60 @@ def main():
     # Check for command line arguments
     import sys
     
-    if len(sys.argv) > 1:
-        # Handle other commands passed as arguments
-        command = sys.argv[1]
-        if command == "interactive":
-            run_interactive_mode()
-            return
-        else:
-            console.print(f"[bold red]❌ Unknown command: {command}[/bold red]")
-            console.print("[dim]Available commands: interactive[/dim]")
-            return
+    run_interactive_mode()
+
+    # if len(sys.argv) > 1:
+    #     # Handle other commands passed as arguments
+    #     command = sys.argv[1]
+    #     if command == "interactive":
+    #         run_interactive_mode()
+    #         return
+    #     else:
+    #         console.print(f"[bold red]❌ Unknown command: {command}[/bold red]")
+    #         console.print("[dim]Available commands: interactive[/dim]")
+    #         return
     
-    # Default mode: look for TASK.md file
-    task_file = "TASK.md"
+    # # Default mode: look for TASK.md file
+    # task_file = "TASK.md"
     
-    try:
-        if not os.path.exists(task_file):
-            # Check in input subdirectory as well
-            task_file = "input/TASK.md"
-            if not os.path.exists(task_file):
-                console.print(f"[bold red]❌ No TASK.md file found in current directory or input/ subdirectory[/bold red]")
-                return
+    # try:
+    #     if not os.path.exists(task_file):
+    #         # Check in input subdirectory as well
+    #         task_file = "input/TASK.md"
+    #         if not os.path.exists(task_file):
+    #             console.print(f"[bold red]❌ No TASK.md file found in current directory or input/ subdirectory[/bold red]")
+    #             return
         
-        # Read the task file
-        with open(task_file, 'r', encoding='utf-8') as f:
-            task_content = f.read().strip()
+    #     # Read the task file
+    #     with open(task_file, 'r', encoding='utf-8') as f:
+    #         task_content = f.read().strip()
         
-        if not task_content:
-            console.print(f"[bold red]❌ TASK.md file is empty[/bold red]")
-            return
+    #     if not task_content:
+    #         console.print(f"[bold red]❌ TASK.md file is empty[/bold red]")
+    #         return
         
-        console.print(f"[bold bright_blue]🤖 AI Agent Starting Task[/bold bright_blue]")
-        console.print(f"[dim]Reading task from: {task_file}[/dim]")
-        console.print(Panel(
-            task_content,
-            title="[bold blue]📋 Task Description[/bold blue]",
-            border_style="blue",
-            padding=(1, 2)
-        ))
+    #     console.print(f"[bold bright_blue]🤖 AI Agent Starting Task[/bold bright_blue]")
+    #     console.print(f"[dim]Reading task from: {task_file}[/dim]")
+    #     console.print(Panel(
+    #         task_content,
+    #         title="[bold blue]📋 Task Description[/bold blue]",
+    #         border_style="blue",
+    #         padding=(1, 2)
+    #     ))
         
-        # Process the task
-        response_data = stream_openai_response(task_content)
+    #     # Process the task
+    #     response_data = stream_openai_response(task_content)
         
-        if response_data.get("error"):
-            console.print(f"[bold red]❌ Error: {response_data['error']}[/bold red]")
-            sys.exit(1)
-        else:
-            console.print(f"\n[bold green]✅ Task completed successfully[/bold green]")
-            sys.exit(0)
+    #     if response_data.get("error"):
+    #         console.print(f"[bold red]❌ Error: {response_data['error']}[/bold red]")
+    #         sys.exit(1)
+    #     else:
+    #         console.print(f"\n[bold green]✅ Task completed successfully[/bold green]")
+    #         sys.exit(0)
             
-    except Exception as e:
-        console.print(f"[bold red]❌ Error reading task file: {str(e)}[/bold red]")
-        sys.exit(1)
+    # except Exception as e:
+    #     console.print(f"[bold red]❌ Error reading task file: {str(e)}[/bold red]")
+    #     sys.exit(1)
 
 def run_interactive_mode():
     """Run the original interactive mode"""
