@@ -467,9 +467,65 @@ def normalize_path(path_str: str) -> str:
 # --------------------------------------------------------------------------------
 # 5. Conversation state
 # --------------------------------------------------------------------------------
-conversation_history = [
+CONVERSATION_LOG_FILE = "../logs/conversation_history.log"
+
+class ConversationHistory:
+    def __init__(self, initial_history: List[Dict[str, Any]]):
+        self._history = list(initial_history)
+        self.whole_write()
+
+    def _ensure_log_dir_exists(self):
+        """Ensure the log directory exists."""
+        log_dir = Path(CONVERSATION_LOG_FILE).parent
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+    def append_write(self, record: Dict[str, Any]):
+        """Append a single record to the conversation log file in JSONL format."""
+        self._ensure_log_dir_exists()
+        try:
+            with open(CONVERSATION_LOG_FILE, "a", encoding="utf-8") as f:
+                json_record = json.dumps(record)
+                f.write(json_record + "\n")
+        except Exception as e:
+            # In a real-world scenario, you might want a more robust logging mechanism here
+            console.print(f"[bold red]✗ Error writing to conversation log: {e}[/bold red]")
+
+    def whole_write(self):
+        """Overwrite the log file with the entire current conversation in JSONL format."""
+        self._ensure_log_dir_exists()
+        try:
+            with open(CONVERSATION_LOG_FILE, "w", encoding="utf-8") as f:
+                for record in self._history:
+                    json_record = json.dumps(record)
+                    f.write(json_record + "\n")
+        except Exception as e:
+            # In a real-world scenario, you might want a more robust logging mechanism here
+            console.print(f"[bold red]✗ Error writing to conversation log: {e}[/bold red]")
+
+    def append(self, item: Dict[str, Any]):
+        self._history.append(item)
+        self.append_write(item)
+
+    def extend(self, items: List[Dict[str, Any]]):
+        self._history.extend(items)
+        self.whole_write()
+
+    def clear(self):
+        self._history.clear()
+        self.whole_write()
+
+    def __iter__(self):
+        return iter(self._history)
+
+    def __len__(self):
+        return len(self._history)
+
+    def __getitem__(self, index):
+        return self._history[index]
+
+conversation_history = ConversationHistory([
     {"role": "system", "content": system_PROMPT}
-]
+])
 
 # --------------------------------------------------------------------------------
 # 6. OpenAI API interaction with streaming
@@ -593,6 +649,24 @@ def execute_function_call(tool_call) -> str:
     except Exception as e:
         return f"Error executing {function_name}: {str(e)}"
 
+def log_stream_chunk(chunk: ChatCompletionChunk):
+    """Append a single stream chunk to the stream log file in JSONL format."""
+    log_dir = Path("../logs/")
+    log_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with open("../logs/stream_chunks.log", "a", encoding="utf-8") as f:
+            # Pydantic models have a .model_dump() method for serialization
+            # Using exclude_unset=True keeps the log clean by not writing null values
+            chunk_dict = chunk.model_dump(exclude_unset=True)
+            if not chunk_dict:  # Don't log empty chunks
+                return
+            
+            json_record = json.dumps(chunk_dict)
+            f.write(json_record + "\n")
+    except Exception as e:
+        # Avoid crashing the main loop for a logging error
+        console.print(f"[bold red]✗ Error writing to stream log: {e}[/bold red]")
+
 def process_streaming_response(stream, stream_name="response"):
     """Process a streaming response and extract content and tool calls."""
     console.print(f"\n[bold bright_blue]📡 Processing {stream_name} stream...[/bold bright_blue]")
@@ -602,6 +676,8 @@ def process_streaming_response(stream, stream_name="response"):
     tool_calls = []
     
     for chunk in stream:
+        log_stream_chunk(chunk)
+        
         # Handle reasoning content if available (DeepSeek-specific)
         if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
             if not reasoning_started:
