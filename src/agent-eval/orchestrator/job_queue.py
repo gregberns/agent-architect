@@ -133,7 +133,7 @@ class Job:
         return cls(**data)
 
 class JobQueue:
-    def __init__(self, persistence_file: str = "job_queue.json"):
+    def __init__(self, persistence_file: str = "job_queue.json", silent: bool = False):
         # Handle both absolute and relative paths
         if Path(persistence_file).is_absolute():
             self.persistence_file = Path(persistence_file)
@@ -141,6 +141,7 @@ class JobQueue:
             self.persistence_file = Path(persistence_file)
         self.jobs: Dict[str, Job] = {}
         self._lock = threading.RLock()
+        self.silent = silent  # Suppress error messages when True
         self.load_from_file()
     
     def enqueue(self, job_type: Union[JobType, str], parameters: Dict[str, Any], 
@@ -349,7 +350,8 @@ class JobQueue:
                         self.jobs[job_id] = Job.from_dict(job_data)
                     except (KeyError, ValueError, TypeError) as job_error:
                         # Skip corrupted job but log the issue
-                        print(f"Warning: Skipping corrupted job {job_id}: {job_error}")
+                        if not self.silent:
+                            print(f"Warning: Skipping corrupted job {job_id}: {job_error}")
                         continue
                         
                 return  # Success
@@ -360,7 +362,8 @@ class JobQueue:
                     time.sleep(0.1 * (attempt + 1))
                     continue
                 else:
-                    print(f"Error loading job queue after {max_retries} attempts: {e}")
+                    if not self.silent:
+                        print(f"Error loading job queue after {max_retries} attempts: {e}")
                     # Try to recover by clearing corrupted data
                     self.jobs = {}
                     # Save empty state to fix corruption

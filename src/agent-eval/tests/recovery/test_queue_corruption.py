@@ -23,7 +23,7 @@ class TestQueueCorruption:
         """Test recovery from invalid JSON in queue file"""
         with test_environment() as env:
             # Create valid queue first
-            job_queue = JobQueue(env.queue_file)
+            job_queue = JobQueue(env.queue_file, silent=True)
             
             # Add some jobs
             job_id1 = job_queue.enqueue(JobType.EVALUATE_TASK, {'task': 'test1'})
@@ -34,7 +34,7 @@ class TestQueueCorruption:
             
             # Try to create new queue instance - should handle corruption
             try:
-                corrupted_queue = JobQueue(env.queue_file)
+                corrupted_queue = JobQueue(env.queue_file, silent=True)
                 
                 # Should start with empty queue after corruption recovery
                 stats = corrupted_queue.get_queue_stats()
@@ -61,7 +61,7 @@ class TestQueueCorruption:
             create_corrupted_queue_file(env.queue_file, "empty_file")
             
             # Should be able to initialize queue
-            job_queue = JobQueue(env.queue_file)
+            job_queue = JobQueue(env.queue_file, silent=True)
             
             # Should start with empty stats
             stats = job_queue.get_queue_stats()
@@ -81,7 +81,7 @@ class TestQueueCorruption:
             create_corrupted_queue_file(env.queue_file, "missing_jobs_key")
             
             # Should be able to initialize queue
-            job_queue = JobQueue(env.queue_file)
+            job_queue = JobQueue(env.queue_file, silent=True)
             
             # Should start with empty stats
             stats = job_queue.get_queue_stats()
@@ -99,7 +99,7 @@ class TestQueueCorruption:
             
             # Should handle truncated JSON
             try:
-                job_queue = JobQueue(env.queue_file)
+                job_queue = JobQueue(env.queue_file, silent=True)
                 
                 # Should start fresh
                 stats = job_queue.get_queue_stats()
@@ -117,7 +117,7 @@ class TestQueueCorruption:
         """Test backup creation and restoration"""
         with test_environment() as env:
             # Create queue with jobs
-            job_queue = JobQueue(env.queue_file)
+            job_queue = JobQueue(env.queue_file, silent=True)
             
             original_jobs = []
             for i in range(3):
@@ -145,7 +145,7 @@ class TestQueueCorruption:
                 dst.write(src.read())
             
             # Verify restoration
-            restored_queue = JobQueue(env.queue_file)
+            restored_queue = JobQueue(env.queue_file, silent=True)
             restored_stats = restored_queue.get_queue_stats()
             
             assert restored_stats == original_stats
@@ -158,7 +158,7 @@ class TestQueueCorruption:
     def test_concurrent_corruption_handling(self):
         """Test handling corruption during concurrent access"""
         with test_environment() as env:
-            job_queue = JobQueue(env.queue_file)
+            job_queue = JobQueue(env.queue_file, silent=True)
             
             # Add initial jobs
             for i in range(5):
@@ -195,7 +195,7 @@ class TestQueueCorruption:
             # System should either recover or fail gracefully
             try:
                 # Try to create new queue instance
-                new_queue = JobQueue(env.queue_file)
+                new_queue = JobQueue(env.queue_file, silent=True)
                 stats = new_queue.get_queue_stats()
                 # Should be able to get stats (even if empty after recovery)
                 assert isinstance(stats['pending'], int)
@@ -206,7 +206,7 @@ class TestQueueCorruption:
     def test_gradual_corruption_detection(self):
         """Test detection of gradual corruption in queue data"""
         with test_environment() as env:
-            job_queue = JobQueue(env.queue_file)
+            job_queue = JobQueue(env.queue_file, silent=True)
             
             # Add jobs
             job_ids = []
@@ -228,7 +228,7 @@ class TestQueueCorruption:
             
             # Try to load queue - should handle invalid job data
             try:
-                corrupted_queue = JobQueue(env.queue_file)
+                corrupted_queue = JobQueue(env.queue_file, silent=True)
                 
                 # Should be able to get stats
                 stats = corrupted_queue.get_queue_stats()
@@ -247,7 +247,7 @@ class TestQueueCorruption:
     def test_recovery_preserves_good_data(self):
         """Test that recovery preserves good data when possible"""
         with test_environment() as env:
-            job_queue = JobQueue(env.queue_file)
+            job_queue = JobQueue(env.queue_file, silent=True)
             
             # Create mix of jobs in different states
             # Create all jobs first, then process them in specific order
@@ -284,7 +284,7 @@ class TestQueueCorruption:
                 json.dump(data, f)
             
             # Load queue with partial corruption
-            recovered_queue = JobQueue(env.queue_file)
+            recovered_queue = JobQueue(env.queue_file, silent=True)
             
             # Should preserve good jobs
             pending_job_recovered = recovered_queue.get_job(actual_pending_job_id) if actual_pending_job_id else None

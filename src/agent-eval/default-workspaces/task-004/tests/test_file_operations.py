@@ -74,7 +74,7 @@ def test_count_words():
         
         file_operations.write_file(temp_filename, test_content)
         words = file_operations.count_words(temp_filename)
-        assert words == 7  # Hello, World, This, is, a, test, Third, line
+        assert words == 8  # Hello, World, This, is, a, test, Third, line
         
     finally:
         # Clean up
