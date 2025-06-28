@@ -108,7 +108,7 @@ class ReportGenerator:
         output_file = output_dir / filename
         
         # Convert epoch score to detailed dictionary
-        report = json.loads(json.dumps(epoch_score, default=lambda o: o.__dict__))
+        report = json.loads(json.dumps(epoch_score, default=lambda o: o.isoformat() if isinstance(o, datetime) else o.__dict__))
         
         # Write JSON report
         with open(output_file, 'w') as f:

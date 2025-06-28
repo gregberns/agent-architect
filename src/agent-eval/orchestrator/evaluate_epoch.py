@@ -383,7 +383,7 @@ class EpochEvaluator:
             analysis = analyzer.analyze_epoch(epoch_name)
             
             metrics_summary = {
-                'score_summary': json.loads(json.dumps(epoch_score, default=lambda o: o.__dict__)),
+                'score_summary': json.loads(json.dumps(epoch_score, default=lambda o: o.isoformat() if isinstance(o, datetime) else o.__dict__)),
                 'reports_generated': report_files,
                 'analysis': analysis
             }

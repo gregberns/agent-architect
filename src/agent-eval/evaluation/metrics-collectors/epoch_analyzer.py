@@ -314,7 +314,7 @@ class EpochAnalyzer:
             analysis = {
                 'epoch_name': epoch_name,
                 'analyzed_at': datetime.now().isoformat(),
-                'overall_performance': json.loads(json.dumps(epoch_score, default=lambda o: o.__dict__)),
+                'overall_performance': json.loads(json.dumps(epoch_score, default=lambda o: o.isoformat() if isinstance(o, datetime) else o.__dict__)),
                 'task_breakdown': {},
                 'performance_insights': {},
                 'recommendations': []
