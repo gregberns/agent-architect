@@ -27,9 +27,16 @@ class TrendAnalysis:
     best_epoch: str
     worst_epoch: str
     
-    def __post_init__(self):
+    def __init__(self, metric_name: str, values: List[float], epochs: List[str]):
+        self.metric_name = metric_name
+        self.values = values
+        self.epochs = epochs
+
         if len(self.values) < 2:
             self.trend_direction = "insufficient_data"
+            self.change_percentage = 0
+            self.best_epoch = self.epochs[0] if self.epochs else "N/A"
+            self.worst_epoch = self.epochs[0] if self.epochs else "N/A"
             return
         
         # Calculate trend
@@ -43,13 +50,13 @@ class TrendAnalysis:
         else:
             self.trend_direction = "stable"
         
-        self.change_percentage = ((last_val - first_val) / first_val) * 100 if first_val > 0 else 0
+        self.change_percentage = ((last_val - first_val) / first_val) * 100 if first_val > 0 else float('inf') if last_val > 0 else 0.0
         
         # Find best and worst epochs
-        max_idx = self.values.index(max(self.values))
-        min_idx = self.values.index(min(self.values))
-        self.best_epoch = self.epochs[max_idx]
-        self.worst_epoch = self.epochs[min_idx]
+        max_val = max(self.values)
+        min_val = min(self.values)
+        self.best_epoch = self.epochs[self.values.index(max_val)]
+        self.worst_epoch = self.epochs[self.values.index(min_val)]
 
 @dataclass
 class TaskProgression:
@@ -61,15 +68,19 @@ class TaskProgression:
     best_epoch: str
     consistency_score: float  # 0-1, how consistent the task performance is
     
-    def __post_init__(self):
+    def __init__(self, task_name: str, epoch_scores: Dict[str, int], epoch_statuses: Dict[str, str]):
+        self.task_name = task_name
+        self.epoch_scores = epoch_scores
+        self.epoch_statuses = epoch_statuses
+        
         if self.epoch_scores:
             scores = list(self.epoch_scores.values())
             self.best_score = max(scores)
             best_epochs = [epoch for epoch, score in self.epoch_scores.items() if score == self.best_score]
-            self.best_epoch = best_epochs[0]  # First epoch that achieved best score
+            self.best_epoch = best_epochs[0] if best_epochs else "none"
             
             # Calculate consistency (how often the task gets max score)
-            max_scores = sum(1 for score in scores if score == 2)
+            max_scores = sum(1 for score in scores if score == 3) # Max score is 3
             self.consistency_score = max_scores / len(scores) if scores else 0.0
         else:
             self.best_score = 0
@@ -91,7 +102,8 @@ class EpochAnalyzer:
             Dictionary mapping metric names to trend analysis
         """
         if len(epochs) < 2:
-            raise ValueError("Need at least 2 epochs for trend analysis")
+            print("Warning: Need at least 2 epochs for trend analysis. Returning empty analysis.")
+            return {}
         
         # Calculate scores for all epochs
         epoch_scores = {}
@@ -101,62 +113,31 @@ class EpochAnalyzer:
             except Exception as e:
                 print(f"Warning: Could not calculate score for {epoch}: {e}")
         
-        if len(epoch_scores) < 2:
-            raise ValueError("Need at least 2 valid epochs for trend analysis")
+        valid_epochs = list(epoch_scores.keys())
+        if len(valid_epochs) < 2:
+            print("Warning: Need at least 2 valid epochs for trend analysis. Returning empty analysis.")
+            return {}
         
         # Sort epochs for chronological analysis
-        sorted_epochs = sorted(epoch_scores.keys())
+        sorted_epochs = sorted(valid_epochs)
         
         # Extract metrics for trend analysis
         trends = {}
         
-        # Overall success rate trend
-        success_rates = [epoch_scores[epoch].success_rate for epoch in sorted_epochs]
-        trends['success_rate'] = TrendAnalysis(
-            metric_name='Overall Success Rate',
-            values=success_rates,
-            epochs=sorted_epochs,
-            trend_direction='',
-            change_percentage=0,
-            best_epoch='',
-            worst_epoch=''
-        )
-        
-        # Compilation success rate trend
-        compilation_rates = [epoch_scores[epoch].compilation_success_rate for epoch in sorted_epochs]
-        trends['compilation_success_rate'] = TrendAnalysis(
-            metric_name='Compilation Success Rate',
-            values=compilation_rates,
-            epochs=sorted_epochs,
-            trend_direction='',
-            change_percentage=0,
-            best_epoch='',
-            worst_epoch=''
-        )
-        
-        # Test success rate trend
-        test_rates = [epoch_scores[epoch].test_success_rate for epoch in sorted_epochs]
-        trends['test_success_rate'] = TrendAnalysis(
-            metric_name='Test Success Rate',
-            values=test_rates,
-            epochs=sorted_epochs,
-            trend_direction='',
-            change_percentage=0,
-            best_epoch='',
-            worst_epoch=''
-        )
-        
-        # Total score trend
-        total_scores = [epoch_scores[epoch].total_score for epoch in sorted_epochs]
-        trends['total_score'] = TrendAnalysis(
-            metric_name='Total Score',
-            values=total_scores,
-            epochs=sorted_epochs,
-            trend_direction='',
-            change_percentage=0,
-            best_epoch='',
-            worst_epoch=''
-        )
+        metric_mappers = {
+            'success_rate': ('Overall Success Rate', lambda s: s.success_rate),
+            'compilation_success_rate': ('Compilation Success Rate', lambda s: s.compilation_success_rate),
+            'test_success_rate': ('Test Success Rate', lambda s: s.test_success_rate),
+            'total_score': ('Total Score', lambda s: float(s.total_score))
+        }
+
+        for key, (name, mapper) in metric_mappers.items():
+            values = [mapper(epoch_scores[epoch]) for epoch in sorted_epochs]
+            trends[key] = TrendAnalysis(
+                metric_name=name,
+                values=values,
+                epochs=sorted_epochs
+            )
         
         return trends
     
@@ -171,10 +152,11 @@ class EpochAnalyzer:
         task_progressions = {}
         all_tasks = set()
         
-        # First pass: collect all task names
+        epoch_scores_cache = {}
         for epoch in epochs:
             try:
                 epoch_score = self.calculator.calculate_epoch_score(epoch)
+                epoch_scores_cache[epoch] = epoch_score
                 all_tasks.update(epoch_score.task_scores.keys())
             except Exception as e:
                 print(f"Warning: Could not analyze {epoch}: {e}")
@@ -185,8 +167,8 @@ class EpochAnalyzer:
             epoch_statuses = {}
             
             for epoch in epochs:
-                try:
-                    epoch_score = self.calculator.calculate_epoch_score(epoch)
+                if epoch in epoch_scores_cache:
+                    epoch_score = epoch_scores_cache[epoch]
                     if task_name in epoch_score.task_scores:
                         task_score = epoch_score.task_scores[task_name]
                         epoch_scores[epoch] = task_score.total_score
@@ -194,17 +176,14 @@ class EpochAnalyzer:
                     else:
                         epoch_scores[epoch] = 0
                         epoch_statuses[epoch] = "not_run"
-                except Exception:
+                else:
                     epoch_scores[epoch] = 0
                     epoch_statuses[epoch] = "error"
             
             task_progressions[task_name] = TaskProgression(
                 task_name=task_name,
                 epoch_scores=epoch_scores,
-                epoch_statuses=epoch_statuses,
-                best_score=0,
-                best_epoch='',
-                consistency_score=0.0
+                epoch_statuses=epoch_statuses
             )
         
         return task_progressions
@@ -248,7 +227,7 @@ class EpochAnalyzer:
         # Find problematic tasks (low consistency, low best score)
         problematic_tasks = []
         for name, prog in task_progressions.items():
-            if prog.best_score < 2 and prog.consistency_score < 0.5:
+            if prog.best_score < 3 and prog.consistency_score < 0.5:
                 avg_score = statistics.mean(prog.epoch_scores.values()) if prog.epoch_scores else 0
                 problematic_tasks.append((name, avg_score, prog.consistency_score))
         
@@ -315,7 +294,7 @@ class EpochAnalyzer:
         
         # Check for stagnation
         stable_count = sum(1 for trend in trends.values() if trend.trend_direction == 'stable')
-        if stable_count >= 3:
+        if stable_count >= 3 and len(trends) > 0:
             recommendations.append("Performance has plateaued across multiple metrics. Consider new evolution strategies or increased exploration.")
         
         return recommendations
@@ -334,15 +313,7 @@ class EpochAnalyzer:
             analysis = {
                 'epoch_name': epoch_name,
                 'analyzed_at': datetime.now().isoformat(),
-                'overall_performance': {
-                    'total_score': epoch_score.total_score,
-                    'max_possible_score': epoch_score.max_possible_score,
-                    'success_rate': epoch_score.success_rate,
-                    'completed_tasks': epoch_score.completed_tasks,
-                    'total_tasks': epoch_score.total_tasks,
-                    'compilation_success_rate': epoch_score.compilation_success_rate,
-                    'test_success_rate': epoch_score.test_success_rate
-                },
+                'overall_performance': json.loads(json.dumps(epoch_score, default=lambda o: o.__dict__)),
                 'task_breakdown': {},
                 'performance_insights': {},
                 'recommendations': []
@@ -394,10 +365,6 @@ class EpochAnalyzer:
                 'epoch_name': epoch_name,
                 'analyzed_at': datetime.now().isoformat(),
                 'error': f"Analysis failed: {e}",
-                'overall_performance': None,
-                'task_breakdown': {},
-                'performance_insights': {},
-                'recommendations': [f"Could not analyze epoch {epoch_name}: {e}"]
             }
 
 def main():
@@ -450,7 +417,7 @@ def main():
                 print(f"\n📋 Task Progression (Top 5 by consistency):")
                 sorted_tasks = sorted(task_progressions.items(), key=lambda x: x[1].consistency_score, reverse=True)
                 for task_name, prog in sorted_tasks[:5]:
-                    print(f"  {task_name}: {prog.consistency_score:.1%} consistency, best: {prog.best_score}/2 ({prog.best_epoch})")
+                    print(f"  {task_name}: {prog.consistency_score:.1%} consistency, best: {prog.best_score}/3 ({prog.best_epoch})")
         
         if not args.trends_only and not args.tasks_only:
             # Performance patterns
@@ -476,6 +443,7 @@ def main():
         
     except Exception as e:
         print(f"❌ Analysis failed: {e}")
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":

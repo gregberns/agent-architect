@@ -104,48 +104,15 @@ class ReportGenerator:
     def _generate_json_report(self, epoch_score: EpochScore, output_dir: Path) -> Path:
         """Generate detailed JSON report for a single epoch"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{epoch_score.epoch}_report_{timestamp}.json"
+        filename = f"{epoch_score.epoch}_score_report_{timestamp}.json"
         output_file = output_dir / filename
         
         # Convert epoch score to detailed dictionary
-        report = {
-            'metadata': {
-                'epoch': epoch_score.epoch,
-                'generated_at': epoch_score.generated_at.isoformat(),
-                'report_version': '1.0'
-            },
-            'summary': {
-                'total_score': epoch_score.total_score,
-                'max_possible_score': epoch_score.max_possible_score,
-                'success_rate': round(epoch_score.success_rate, 2),
-                'total_tasks': epoch_score.total_tasks,
-                'completed_tasks': epoch_score.completed_tasks,
-                'failed_tasks': epoch_score.failed_tasks,
-                'pending_tasks': epoch_score.pending_tasks,
-                'compilation_success_rate': round(epoch_score.compilation_success_rate, 2),
-                'test_success_rate': round(epoch_score.test_success_rate, 2)
-            },
-            'task_details': {}
-        }
-        
-        # Add detailed task information
-        for task_name, task_score in epoch_score.task_scores.items():
-            report['task_details'][task_name] = {
-                'status': task_score.status,
-                'total_score': task_score.total_score,
-                'max_possible_score': task_score.max_possible_score,
-                'success_rate': round(task_score.success_rate, 2),
-                'compilation_score': task_score.compilation_score,
-                'test_score': task_score.test_score,
-                'execution_time': round(task_score.execution_time, 3),
-                'output_files': task_score.output_files,
-                'error_message': task_score.error_message,
-                'job_id': task_score.job_id
-            }
+        report = json.loads(json.dumps(epoch_score, default=lambda o: o.__dict__))
         
         # Write JSON report
         with open(output_file, 'w') as f:
-            json.dump(report, f, indent=2, default=str)
+            json.dump(report, f, indent=2)
         
         print(f"Generated JSON report: {output_file}")
         return output_file
@@ -159,8 +126,8 @@ class ReportGenerator:
         # Define CSV columns
         fieldnames = [
             'task_name', 'status', 'total_score', 'max_possible_score', 'success_rate',
-            'compilation_score', 'test_score', 'execution_time', 'output_files_count',
-            'error_message', 'job_id'
+            'task_completion_score', 'compilation_score', 'test_score', 'execution_time',
+            'error_message'
         ]
         
         # Write CSV report
@@ -175,12 +142,11 @@ class ReportGenerator:
                     'total_score': task_score.total_score,
                     'max_possible_score': task_score.max_possible_score,
                     'success_rate': round(task_score.success_rate, 2),
+                    'task_completion_score': task_score.task_completion_score,
                     'compilation_score': task_score.compilation_score,
                     'test_score': task_score.test_score,
                     'execution_time': round(task_score.execution_time, 3),
-                    'output_files_count': len(task_score.output_files),
-                    'error_message': task_score.error_message or '',
-                    'job_id': task_score.job_id or ''
+                    'error_message': task_score.error_message or ''
                 })
         
         print(f"Generated CSV report: {output_file}")
@@ -198,11 +164,10 @@ class ReportGenerator:
             'metadata': {
                 'generated_at': datetime.now().isoformat(),
                 'compared_epochs': list(epoch_scores.keys()),
-                'report_version': '1.0'
+                'report_version': '1.1'
             },
             'summary': {},
-            'task_comparison': {},
-            'trends': {}
+            'task_comparison': {}
         }
         
         # Epoch-level summary
@@ -239,19 +204,6 @@ class ReportGenerator:
                         'status': 'not_run'
                     }
         
-        # Simple trend analysis
-        epochs_list = sorted(epoch_scores.keys())
-        if len(epochs_list) >= 2:
-            first_epoch = epoch_scores[epochs_list[0]]
-            last_epoch = epoch_scores[epochs_list[-1]]
-            
-            report['trends'] = {
-                'success_rate_change': round(last_epoch.success_rate - first_epoch.success_rate, 2),
-                'total_score_change': last_epoch.total_score - first_epoch.total_score,
-                'compilation_improvement': round(last_epoch.compilation_success_rate - first_epoch.compilation_success_rate, 2),
-                'test_improvement': round(last_epoch.test_success_rate - first_epoch.test_success_rate, 2)
-            }
-        
         # Write JSON report
         with open(output_file, 'w') as f:
             json.dump(report, f, indent=2, default=str)
@@ -270,7 +222,7 @@ class ReportGenerator:
         fieldnames = [
             'epoch', 'total_score', 'max_possible_score', 'success_rate',
             'completed_tasks', 'total_tasks', 'compilation_success_rate',
-            'test_success_rate', 'failed_tasks', 'pending_tasks'
+            'test_success_rate', 'failed_tasks'
         ]
         
         # Write CSV report
@@ -289,8 +241,7 @@ class ReportGenerator:
                     'total_tasks': score.total_tasks,
                     'compilation_success_rate': round(score.compilation_success_rate, 2),
                     'test_success_rate': round(score.test_success_rate, 2),
-                    'failed_tasks': score.failed_tasks,
-                    'pending_tasks': score.pending_tasks
+                    'failed_tasks': score.failed_tasks
                 })
         
         print(f"Generated comparison CSV report: {output_file}")
@@ -310,9 +261,10 @@ def main():
     import argparse
     
     parser = argparse.ArgumentParser(description="Generate performance reports")
-    parser.add_argument("--epoch", help="Single epoch to report on")
-    parser.add_argument("--compare", nargs='+', help="Multiple epochs to compare")
-    parser.add_argument("--list-epochs", action="store_true", help="List available epochs")
+    report_group = parser.add_mutually_exclusive_group(required=True)
+    report_group.add_argument("--epoch", help="Single epoch to report on")
+    report_group.add_argument("--compare", nargs='+', help="Multiple epochs to compare")
+    report_group.add_argument("--list-epochs", action="store_true", help="List available epochs")
     parser.add_argument("--output-dir", help="Output directory for reports")
     parser.add_argument("--formats", nargs='+', choices=['json', 'csv'], 
                        default=['json', 'csv'], help="Output formats")
@@ -353,23 +305,6 @@ def main():
         except Exception as e:
             print(f"Error generating comparison report: {e}")
             sys.exit(1)
-    
-    else:
-        # Default: report on all available epochs
-        epochs = generator.get_available_epochs()
-        if not epochs:
-            print("No epochs found to report on")
-            return
-        
-        print(f"Generating reports for all available epochs: {', '.join(epochs)}")
-        for epoch in epochs:
-            try:
-                output_files = generator.generate_epoch_report(
-                    epoch, args.output_dir, args.formats
-                )
-                print(f"  ✅ {epoch}: {len(output_files)} reports generated")
-            except Exception as e:
-                print(f"  ❌ {epoch}: {e}")
 
 if __name__ == "__main__":
     main()

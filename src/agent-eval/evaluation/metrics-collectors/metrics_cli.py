@@ -20,40 +20,35 @@ def cmd_score(args):
     """Handle score calculation commands"""
     calculator = ScoreCalculator(args.config)
     
-    if args.validation_summary:
-        summary = calculator.get_validation_summary(args.epoch)
-        if args.output:
-            with open(args.output, 'w') as f:
-                json.dump(summary, f, indent=2, default=str)
-            print(f"Validation summary saved to: {args.output}")
+    try:
+        if args.task:
+            # Single task score
+            task_score = calculator.calculate_task_score(args.epoch, args.task)
+            print(f"Task Score for {args.epoch}/{args.task}:")
+            print(f"  Status: {task_score.status}")
+            print(f"  Score: {task_score.total_score}/3 ({task_score.success_rate:.1f}%)")
+            print(f"  Task Completion: {task_score.task_completion_score}/1")
+            print(f"  Compilation: {task_score.compilation_score}/1")
+            print(f"  Tests: {task_score.test_score}/1")
+            if task_score.error_message:
+                print(f"  Error: {task_score.error_message}")
         else:
-            print(json.dumps(summary, indent=2, default=str))
-        return
-    
-    if args.task:
-        # Single task score
-        task_score = calculator.calculate_task_score(args.epoch, args.task)
-        print(f"Task Score for {args.epoch}/{args.task}:")
-        print(f"  Status: {task_score.status}")
-        print(f"  Score: {task_score.total_score}/2 ({task_score.success_rate:.1f}%)")
-        print(f"  Compilation: {task_score.compilation_score}/1")
-        print(f"  Tests: {task_score.test_score}/1")
-        if task_score.error_message:
-            print(f"  Error: {task_score.error_message}")
-    else:
-        # Epoch score
-        epoch_score = calculator.calculate_epoch_score(args.epoch)
-        print(f"Epoch Score for {args.epoch}:")
-        print(f"  Total Score: {epoch_score.total_score}/{epoch_score.max_possible_score} ({epoch_score.success_rate:.1f}%)")
-        print(f"  Tasks: {epoch_score.completed_tasks}/{epoch_score.total_tasks} completed")
-        print(f"  Compilation Success: {epoch_score.compilation_success_rate:.1f}%")
-        print(f"  Test Success: {epoch_score.test_success_rate:.1f}%")
-        
-        if args.verbose:
-            print(f"\nTask Breakdown:")
-            for task_name, task_score in epoch_score.task_scores.items():
-                status_icon = "✅" if task_score.status == "completed" else "❌"
-                print(f"  {status_icon} {task_name}: {task_score.total_score}/2 ({task_score.status})")
+            # Epoch score
+            epoch_score = calculator.calculate_epoch_score(args.epoch)
+            print(f"Epoch Score for {args.epoch}:")
+            print(f"  Total Score: {epoch_score.total_score}/{epoch_score.max_possible_score} ({epoch_score.success_rate:.1f}%)")
+            print(f"  Tasks: {epoch_score.completed_tasks}/{epoch_score.total_tasks} completed")
+            print(f"  Compilation Success: {epoch_score.compilation_success_rate:.1f}%")
+            print(f"  Test Success: {epoch_score.test_success_rate:.1f}%")
+            
+            if args.verbose:
+                print(f"\nTask Breakdown:")
+                for task_name, task_score in epoch_score.task_scores.items():
+                    status_icon = "✅" if task_score.status == "completed" else "❌"
+                    print(f"  {status_icon} {task_name}: {task_score.total_score}/3 ({task_score.status})")
+    except FileNotFoundError as e:
+        print(f"Error: {e}. Please run an evaluation for this epoch first.")
+        sys.exit(1)
 
 def cmd_report(args):
     """Handle report generation commands"""
@@ -148,7 +143,7 @@ def cmd_analyze(args):
                 print(f"\n📋 Task Progression (Top 5 by consistency):")
                 sorted_tasks = sorted(task_progressions.items(), key=lambda x: x[1].consistency_score, reverse=True)
                 for task_name, prog in sorted_tasks[:5]:
-                    print(f"  {task_name}: {prog.consistency_score:.1%} consistency, best: {prog.best_score}/2 ({prog.best_epoch})")
+                    print(f"  {task_name}: {prog.consistency_score:.1%} consistency, best: {prog.best_score}/3 ({prog.best_epoch})")
         
         if not args.trends_only and not args.tasks_only:
             # Performance patterns
@@ -185,7 +180,6 @@ def main():
 Examples:
   %(prog)s score --epoch epoch-001
   %(prog)s score --epoch epoch-001 --task task-001
-  %(prog)s score --epoch epoch-001 --validation-summary
   
   %(prog)s report --epoch epoch-001
   %(prog)s report --compare epoch-001 epoch-002
@@ -201,21 +195,19 @@ Examples:
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     
     # Subcommands
-    subparsers = parser.add_subparsers(dest='command', help='Available commands')
+    subparsers = parser.add_subparsers(dest='command', help='Available commands', required=True)
     
     # Score command
     score_parser = subparsers.add_parser('score', help='Calculate task and epoch scores')
     score_parser.add_argument("--epoch", required=True, help="Epoch name (e.g., epoch-001)")
     score_parser.add_argument("--task", help="Specific task name (optional)")
-    score_parser.add_argument("--validation-summary", action="store_true", 
-                             help="Show validation status summary")
-    score_parser.add_argument("--output", help="Output file for results (JSON)")
     
     # Report command
     report_parser = subparsers.add_parser('report', help='Generate performance reports')
-    report_parser.add_argument("--epoch", help="Single epoch to report on")
-    report_parser.add_argument("--compare", nargs='+', help="Multiple epochs to compare")
-    report_parser.add_argument("--list-epochs", action="store_true", help="List available epochs")
+    report_group = report_parser.add_mutually_exclusive_group(required=True)
+    report_group.add_argument("--epoch", help="Single epoch to report on")
+    report_group.add_argument("--compare", nargs='+', help="Multiple epochs to compare")
+    report_group.add_argument("--list-epochs", action="store_true", help="List available epochs")
     report_parser.add_argument("--output-dir", help="Output directory for reports")
     report_parser.add_argument("--formats", nargs='+', choices=['json', 'csv'], 
                               default=['json', 'csv'], help="Output formats")
@@ -229,10 +221,6 @@ Examples:
     analyze_parser.add_argument("--patterns-only", action="store_true", help="Show only performance patterns")
     
     args = parser.parse_args()
-    
-    if not args.command:
-        parser.print_help()
-        sys.exit(1)
     
     # Route to appropriate handler
     if args.command == 'score':
