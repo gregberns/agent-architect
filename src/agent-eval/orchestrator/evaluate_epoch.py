@@ -55,9 +55,12 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
         env['TASK_WORKSPACE'] = str(task_run_dir)
         env['TASK_ID'] = task_name
         
+        # Use a unique project name to avoid container name conflicts in parallel runs
+        project_name = f"agent-eval-{epoch_name}-{task_name}-{int(task_start_time)}"
+
         # Run docker-compose
         proc = subprocess.run(
-            ["docker-compose", "up", "--build", "--abort-on-container-exit"],
+            ["docker-compose", "-p", project_name, "up", "--build", "--abort-on-container-exit", "--remove-orphans"],
             cwd=agent_src_dir,
             capture_output=True,
             text=True,
