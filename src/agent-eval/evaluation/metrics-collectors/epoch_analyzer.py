@@ -5,6 +5,7 @@ Epoch Analyzer - advanced comparison and trend analysis across epochs
 
 import sys
 import json
+import traceback
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from dataclasses import dataclass
