@@ -58,9 +58,15 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
         # Use a unique project name to avoid container name conflicts in parallel runs
         project_name = f"agent-eval-{epoch_name}-{task_name}-{int(task_start_time)}"
 
-        # Run docker-compose
+        # Clean up any leftover containers and networks from this project
+        subprocess.run(
+            ["docker-compose", "-p", project_name, "down", "--remove-orphans", "--volumes"],
+            cwd=agent_src_dir, capture_output=True, env=env
+        )
+
+        # Run docker-compose (only the agent service, not validation services)
         proc = subprocess.run(
-            ["docker-compose", "-p", project_name, "up", "--build", "--abort-on-container-exit", "--remove-orphans"],
+            ["docker-compose", "-p", project_name, "up", "--build", "agent", "--abort-on-container-exit", "--remove-orphans"],
             cwd=agent_src_dir,
             capture_output=True,
             text=True,
@@ -74,16 +80,23 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
         result['error'] = proc.stderr
         result['artifacts']['return_code'] = proc.returncode
 
+        # Save full docker-compose output for debugging
+        result['docker_output'] = {
+            'stdout': proc.stdout,
+            'stderr': proc.stderr,
+            'returncode': proc.returncode
+        }
+        
         # The task is considered "completed" for validation purposes if it ran,
         # even if it exited with an error code, as long as it produced output.
         # This allows the validation step to score partially correct solutions.
         output_dir = task_run_dir / "output"
-        if any(output_dir.iterdir()):
+        if output_dir.exists() and any(output_dir.iterdir()):
              result['status'] = 'completed'
         else:
             result['status'] = 'failed'
             if proc.returncode != 0:
-                result['error'] = f"Docker exited with code {proc.returncode} and produced no output files:\n{proc.stderr}"
+                result['error'] = f"Docker exited with code {proc.returncode} and produced no output files:\nSTDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}"
 
     except subprocess.TimeoutExpired:
         result['status'] = 'failed'
@@ -93,6 +106,15 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
         result['status'] = 'failed'
         result['error'] = traceback.format_exc()
         result['execution_time'] = time.time() - task_start_time
+    finally:
+        # Always clean up containers and networks after execution
+        try:
+            subprocess.run(
+                ["docker-compose", "-p", project_name, "down", "--remove-orphans", "--volumes"],
+                cwd=agent_src_dir, capture_output=True, env=env, timeout=30
+            )
+        except Exception:
+            pass  # Don't fail the task if cleanup fails
         
     return result
 
@@ -267,6 +289,14 @@ class EpochEvaluator:
                 if result['status'] == 'failed':
                     error_snippet = result.get('error', 'No error details.').strip().replace('\n', ' ')
                     print(f"  ERROR for {task_name}: {error_snippet[:300]}...")
+                    
+                    # Save detailed docker output for debugging
+                    if 'docker_output' in result:
+                        debug_file = self.base_dir / "epochs" / phase_name.split()[0].lower() / "runs" / task_name / f"docker_debug_{phase_name.lower().replace(' ', '_')}.json"
+                        debug_file.parent.mkdir(parents=True, exist_ok=True)
+                        with open(debug_file, 'w') as f:
+                            json.dump(result['docker_output'], f, indent=2)
+                        print(f"  DEBUG: Docker output saved to {debug_file.relative_to(self.base_dir)}")
 
         if len(results) != len(tasks):
             print(f"⚠️ Warning: Expected {len(tasks)} results, but only received {len(results)}.")
