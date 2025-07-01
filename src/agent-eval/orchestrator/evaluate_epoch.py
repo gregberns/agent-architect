@@ -359,7 +359,7 @@ class EpochEvaluator:
         
         epoch_runs.mkdir(parents=True, exist_ok=True)
         
-        task_dirs = [d for d in default_workspaces.iterdir() if d.is_dir() and d.name.startswith('task-')]
+        task_dirs = [d for d in default_workspaces.iterdir() if d.is_dir()]
         if not task_dirs:
             raise ValueError("No task directories found in default workspaces")
         

@@ -4,6 +4,22 @@
 
 This system implements an iterative agent development process with two primary phases: **Epoch Evaluation** and **Epoch Evolution**. The goal is to continuously improve an AI agent's coding capabilities through systematic testing and self-improvement cycles.
 
+## Commands
+
+### Validation Tasks
+
+Generate tasks from the MBPP data set, copy them into 
+
+```
+# Generate tasks 601-630 from MBPP dataset
+python generate_mbpp_tasks.py --start-id 601 --end-id 630
+
+# Or with custom paths
+python generate_mbpp_tasks.py --mbpp-file ./data/mbpp.jsonl --output-dir ./default-workspaces --start-id 1 --end-id 10
+```
+
+
+
 ## System Lifecycle
 
 ### Phase 1: Epoch Evaluation

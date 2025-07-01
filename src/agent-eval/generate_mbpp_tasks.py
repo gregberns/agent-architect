@@ -93,35 +93,30 @@ class MBPPTaskGenerator:
                     function_name = func_def
                 break
         
-        task_content = f"""# MBPP Task {task_id:03d}: Programming Challenge
+        task_content = f"""# Task MBPP-{task_id:03d}: {description}
 
 ## Objective
 {description}
 
 ## Requirements
-1. Implement the solution in a Python function
-2. The function should handle all the test cases provided
-3. Write your solution to `./output/{function_name}.py`
-4. Make sure your code passes all the provided tests
+1. Create a function named `{function_name}()` that satisfies the test cases
+2. Write the function to `./output/{function_name}.py`
+3. Your function must pass all the provided test cases
 
-## Test Cases
-The following test cases will be used to validate your solution:
+## Expected Test Cases
+Your function will be tested with:
 """
         
-        # Add test cases
-        for i, test in enumerate(mbpp_item.get('test_list', []), 1):
-            task_content += f"{i}. `{test}`\n"
+        # Add test cases in a simpler format
+        for test in mbpp_item.get('test_list', []):
+            task_content += f"- {test}\n"
         
-        task_content += """
+        task_content += f"""
 ## Scoring Criteria
 - **Compilation (1 point)**: Python script runs without syntax errors
-- **Test Validation (1 point)**: All test cases pass successfully
+- **Test Validation (1 point)**: Function exists and passes all test cases
 
-## Notes
-- Focus on correctness and handling edge cases
-- Your solution will be tested against the provided test cases
-- Make sure to follow Python best practices
-"""
+Write your solution directly to the output file."""
         
         with open(task_dir / "input" / "TASK.md", 'w') as f:
             f.write(task_content)
@@ -161,8 +156,10 @@ def test_function_exists():
         
         # Add individual test functions
         for i, test in enumerate(mbpp_item.get('test_list', []), 1):
-            # Clean up the test assertion
+            # Clean up the test assertion and fix function calls
             test_clean = test.replace('assert ', '').strip()
+            # Replace bare function calls with module.function calls
+            test_clean = test_clean.replace(f'{function_name}(', f'{module_name}.{function_name}(')
             
             test_content += f"""def test_case_{i}():
     \"\"\"Test case {i}: {test}\"\"\"
