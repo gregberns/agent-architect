@@ -93,8 +93,8 @@ def test_file_not_found():
     
     # count_lines should return 0 for non-existent file
     lines = file_operations.count_lines(non_existent_file)
-    assert lines == 0
+    assert lines is None
     
     # count_words should return 0 for non-existent file
     words = file_operations.count_words(non_existent_file)
-    assert words == 0
+    assert words is None

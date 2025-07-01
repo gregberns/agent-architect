@@ -33,6 +33,11 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
     epoch_name, task_name, base_dir, timeout_seconds = args
     task_start_time = time.time()
     
+    # Create unique identifiers for Docker resources
+    unique_id = f"{epoch_name}-{task_name}-{int(task_start_time)}"
+    image_tag = f"agent-eval-{unique_id}"
+    container_name = f"agent-eval-{unique_id}"
+    
     result = {
         'epoch_name': epoch_name,
         'task_name': task_name,
@@ -50,28 +55,39 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
         if not agent_src_dir.exists():
             raise FileNotFoundError(f"Agent source directory not found: {agent_src_dir}")
 
-        # Environment variables for docker-compose
-        env = os.environ.copy()
-        env['TASK_WORKSPACE'] = str(task_run_dir)
-        env['TASK_ID'] = task_name
-        
-        # Use a unique project name to avoid container name conflicts in parallel runs
-        project_name = f"agent-eval-{epoch_name}-{task_name}-{int(task_start_time)}"
-
-        # Clean up any leftover containers and networks from this project
-        subprocess.run(
-            ["docker-compose", "-p", project_name, "down", "--remove-orphans", "--volumes"],
-            cwd=agent_src_dir, capture_output=True, env=env
-        )
-
-        # Run docker-compose (only the agent service, not validation services)
-        proc = subprocess.run(
-            ["docker-compose", "-p", project_name, "up", "--build", "agent", "--abort-on-container-exit", "--remove-orphans"],
+        # Build the Docker image
+        build_proc = subprocess.run(
+            ["docker", "build", "-t", image_tag, "."],
             cwd=agent_src_dir,
             capture_output=True,
             text=True,
-            timeout=timeout_seconds,
-            env=env
+            timeout=300  # 5 minute build timeout
+        )
+        
+        if build_proc.returncode != 0:
+            result['status'] = 'failed'
+            result['error'] = f"Docker build failed:\nSTDOUT:\n{build_proc.stdout}\n\nSTDERR:\n{build_proc.stderr}"
+            result['execution_time'] = time.time() - task_start_time
+            return result
+
+        # Run the Docker container with selective volume mounts (excluding tests folder)
+        proc = subprocess.run([
+            "docker", "run", "--rm",  # Automatically remove container when it exits
+            "-t",  # Allocate a pseudo-TTY to fix prompt_toolkit warnings
+            "--name", container_name,
+            "--env-file", ".env",
+            # Mount only specific folders that agent should have access to
+            "-v", f"{task_run_dir}/input:/app/workspace/input",
+            "-v", f"{task_run_dir}/output:/app/workspace/output",
+            "-v", f"{task_run_dir}/expected-output:/app/workspace/expected-output",
+            # Mount logs separately (agent should write logs to output folder)
+            "-v", f"{task_run_dir}/output:/app/logs", 
+            image_tag
+        ], 
+            cwd=agent_src_dir,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds
         )
 
         execution_time = time.time() - task_start_time
@@ -80,12 +96,21 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
         result['error'] = proc.stderr
         result['artifacts']['return_code'] = proc.returncode
 
-        # Save full docker-compose output for debugging
+        # Save full docker output for debugging and create log file
         result['docker_output'] = {
             'stdout': proc.stdout,
             'stderr': proc.stderr,
             'returncode': proc.returncode
         }
+        
+        # Save container logs to a file for inspection
+        logs_file = task_run_dir / "container_logs.txt"
+        with open(logs_file, 'w') as f:
+            f.write(f"=== Container Execution Logs ===\n")
+            f.write(f"Return Code: {proc.returncode}\n")
+            f.write(f"Execution Time: {execution_time:.2f}s\n\n")
+            f.write(f"=== STDOUT ===\n{proc.stdout}\n\n")
+            f.write(f"=== STDERR ===\n{proc.stderr}\n")
         
         # The task is considered "completed" for validation purposes if it ran,
         # even if it exited with an error code, as long as it produced output.
@@ -107,11 +132,17 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
         result['error'] = traceback.format_exc()
         result['execution_time'] = time.time() - task_start_time
     finally:
-        # Always clean up containers and networks after execution
+        # Always clean up Docker image after execution
         try:
+            # Remove the container if it still exists (in case --rm didn't work)
             subprocess.run(
-                ["docker-compose", "-p", project_name, "down", "--remove-orphans", "--volumes"],
-                cwd=agent_src_dir, capture_output=True, env=env, timeout=30
+                ["docker", "rm", "-f", container_name],
+                capture_output=True, timeout=30
+            )
+            # Remove the image to save disk space
+            subprocess.run(
+                ["docker", "rmi", "-f", image_tag],
+                capture_output=True, timeout=30
             )
         except Exception:
             pass  # Don't fail the task if cleanup fails
@@ -179,13 +210,21 @@ def run_validation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
                 test_env['PYTHONPATH'] = str(temp_path / "output") + os.pathsep + test_env.get('PYTHONPATH', '')
 
                 test_proc = subprocess.run(
-                    [sys.executable, "-m", "pytest", "tests/"],
+                    [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short"],
                     cwd=temp_path,
                     capture_output=True, text=True, timeout=timeout_seconds,
                     env=test_env
                 )
                 result['output'] = test_proc.stdout
                 result['error'] += test_proc.stderr
+                
+                # Save test output to a file for debugging
+                test_logs_file = validation_dir / "test_logs.txt"
+                with open(test_logs_file, 'w') as f:
+                    f.write(f"=== Test Execution Logs ===\n")
+                    f.write(f"Return Code: {test_proc.returncode}\n\n")
+                    f.write(f"=== STDOUT ===\n{test_proc.stdout}\n\n")
+                    f.write(f"=== STDERR ===\n{test_proc.stderr}\n")
 
                 if test_proc.returncode == 0:
                     result['artifacts']['test_score'] = 1
@@ -289,14 +328,20 @@ class EpochEvaluator:
                 if result['status'] == 'failed':
                     error_snippet = result.get('error', 'No error details.').strip().replace('\n', ' ')
                     print(f"  ERROR for {task_name}: {error_snippet[:300]}...")
+                
+                # Save detailed docker output for debugging (for both success and failure)
+                if 'docker_output' in result:
+                    task_run_dir = self.base_dir / "epochs" / result['epoch_name'] / "runs" / task_name
+                    task_run_dir.mkdir(parents=True, exist_ok=True)
                     
-                    # Save detailed docker output for debugging
-                    if 'docker_output' in result:
-                        debug_file = self.base_dir / "epochs" / phase_name.split()[0].lower() / "runs" / task_name / f"docker_debug_{phase_name.lower().replace(' ', '_')}.json"
-                        debug_file.parent.mkdir(parents=True, exist_ok=True)
-                        with open(debug_file, 'w') as f:
-                            json.dump(result['docker_output'], f, indent=2)
-                        print(f"  DEBUG: Docker output saved to {debug_file.relative_to(self.base_dir)}")
+                    # Save stdout and stderr as separate text files
+                    stdout_file = task_run_dir / f"docker_stdout_{phase_name.lower().replace(' ', '_')}.txt"
+                    stderr_file = task_run_dir / f"docker_stderr_{phase_name.lower().replace(' ', '_')}.txt"
+                    
+                    with open(stdout_file, 'w') as f:
+                        f.write(result['docker_output']['stdout'])
+                    with open(stderr_file, 'w') as f:
+                        f.write(result['docker_output']['stderr'])
 
         if len(results) != len(tasks):
             print(f"⚠️ Warning: Expected {len(tasks)} results, but only received {len(results)}.")
