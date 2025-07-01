@@ -1,0 +1,12 @@
+{
+  "text": "Write a python function to identify non-prime numbers.",
+  "code": "import math\r\ndef is_not_prime(n):\r\n    result = False\r\n    for i in range(2,int(math.sqrt(n)) + 1):\r\n        if n % i == 0:\r\n            result = True\r\n    return result",
+  "task_id": 3,
+  "test_setup_code": "",
+  "test_list": [
+    "assert is_not_prime(2) == False",
+    "assert is_not_prime(10) == True",
+    "assert is_not_prime(35) == True"
+  ],
+  "challenge_test_list": []
+}
