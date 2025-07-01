@@ -51,4 +51,7 @@ Thumbs.db
 
 src/agent-eval/epochs/
 src/agent-eval/job_queue.json
+src/agent-eval/default-workspaces
+
 .aider*
+
