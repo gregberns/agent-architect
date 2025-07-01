@@ -82,18 +82,34 @@ class MBPPTaskGenerator:
         task_id = mbpp_item['task_id']
         description = mbpp_item['text']
         
-        # Extract function name from the reference code (rough heuristic)
-        code_lines = mbpp_item['code'].split('\n')
+        # Extract function name from the test cases (more reliable)
         function_name = "solution"  # default
-        for line in code_lines:
-            if line.strip().startswith('def '):
-                # Extract function name
-                func_def = line.strip()[4:].split('(')[0]
-                if func_def and func_def.isidentifier():
-                    function_name = func_def
-                break
+        test_list = mbpp_item.get('test_list', [])
         
-        task_content = f"""# Task MBPP-{task_id:03d}: {description}
+        if test_list:
+            # Look for function calls in test cases to find the main function being tested
+            import re
+            for test in test_list:
+                # Extract function calls from assertions like "assert func_name(args) == result"
+                match = re.search(r'assert\s+(\w+)\s*\(', test)
+                if match:
+                    potential_func = match.group(1)
+                    # Check if this function exists in the code
+                    if f'def {potential_func}(' in mbpp_item['code']:
+                        function_name = potential_func
+                        break
+        
+        # Fallback: extract first function name from code
+        if function_name == "solution":
+            code_lines = mbpp_item['code'].split('\n')
+            for line in code_lines:
+                if line.strip().startswith('def '):
+                    func_def = line.strip()[4:].split('(')[0].strip()
+                    if func_def and func_def.isidentifier():
+                        function_name = func_def
+                        break
+        
+        task_content = f"""# Task MBPP-{task_id:03d}
 
 ## Objective
 {description}
@@ -125,17 +141,34 @@ Write your solution directly to the output file."""
         """Create test file with pytest tests"""
         task_id = mbpp_item['task_id']
         
-        # Extract function name from the reference code
-        code_lines = mbpp_item['code'].split('\n')
+        # Extract function name from the test cases (more reliable)
         function_name = "solution"  # default
+        test_list = mbpp_item.get('test_list', [])
+        
+        if test_list:
+            # Look for function calls in test cases to find the main function being tested
+            import re
+            for test in test_list:
+                # Extract function calls from assertions like "assert func_name(args) == result"
+                match = re.search(r'assert\s+(\w+)\s*\(', test)
+                if match:
+                    potential_func = match.group(1)
+                    # Check if this function exists in the code
+                    if f'def {potential_func}(' in mbpp_item['code']:
+                        function_name = potential_func
+                        break
+        
+        # Fallback: extract first function name from code
+        if function_name == "solution":
+            code_lines = mbpp_item['code'].split('\n')
+            for line in code_lines:
+                if line.strip().startswith('def '):
+                    func_def = line.strip()[4:].split('(')[0].strip()
+                    if func_def and func_def.isidentifier():
+                        function_name = func_def
+                        break
+        
         module_name = function_name
-        for line in code_lines:
-            if line.strip().startswith('def '):
-                func_def = line.strip()[4:].split('(')[0]
-                if func_def and func_def.isidentifier():
-                    function_name = func_def
-                    module_name = func_def
-                break
         
         test_content = f"""import pytest
 import sys
@@ -180,14 +213,32 @@ def test_function_exists():
     
     def _create_expected_output(self, task_dir: Path, mbpp_item: Dict[str, Any]) -> None:
         """Create expected output (reference solution)"""
-        code_lines = mbpp_item['code'].split('\n')
+        # Extract function name from the test cases (more reliable)
         function_name = "solution"  # default
-        for line in code_lines:
-            if line.strip().startswith('def '):
-                func_def = line.strip()[4:].split('(')[0]
-                if func_def and func_def.isidentifier():
-                    function_name = func_def
-                break
+        test_list = mbpp_item.get('test_list', [])
+        
+        if test_list:
+            # Look for function calls in test cases to find the main function being tested
+            import re
+            for test in test_list:
+                # Extract function calls from assertions like "assert func_name(args) == result"
+                match = re.search(r'assert\s+(\w+)\s*\(', test)
+                if match:
+                    potential_func = match.group(1)
+                    # Check if this function exists in the code
+                    if f'def {potential_func}(' in mbpp_item['code']:
+                        function_name = potential_func
+                        break
+        
+        # Fallback: extract first function name from code
+        if function_name == "solution":
+            code_lines = mbpp_item['code'].split('\n')
+            for line in code_lines:
+                if line.strip().startswith('def '):
+                    func_def = line.strip()[4:].split('(')[0].strip()
+                    if func_def and func_def.isidentifier():
+                        function_name = func_def
+                        break
         
         # Clean up the reference code (fix Windows line endings)
         cleaned_code = mbpp_item['code'].replace('\r\n', '\n').replace('\r', '\n')

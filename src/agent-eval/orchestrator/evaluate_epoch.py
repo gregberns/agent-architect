@@ -287,7 +287,7 @@ class EpochEvaluator:
             validation_results = {}
 
         # --- Phase 3: Generate Summary ---
-        summary = self._generate_evaluation_summary(epoch_name, evaluation_results, validation_results)
+        summary = self._generate_evaluation_summary(epoch_name, evaluation_results, validation_results, task_names)
         
         # Save the detailed summary that metrics collectors will use
         summary_file = self.base_dir / "epochs" / epoch_name / "evaluation_summary.json"
@@ -359,7 +359,7 @@ class EpochEvaluator:
         
         epoch_runs.mkdir(parents=True, exist_ok=True)
         
-        task_dirs = [d for d in default_workspaces.iterdir() if d.is_dir()]
+        task_dirs = sorted([d for d in default_workspaces.iterdir() if d.is_dir()])
         if not task_dirs:
             raise ValueError("No task directories found in default workspaces")
         
@@ -380,7 +380,8 @@ class EpochEvaluator:
 
     def _generate_evaluation_summary(self, epoch_name: str, 
                                    eval_results: Dict[str, Any],
-                                   val_results: Dict[str, Any]) -> Dict[str, Any]:
+                                   val_results: Dict[str, Any],
+                                   task_names: List[str]) -> Dict[str, Any]:
         """Generate evaluation summary from task results."""
         print("\n📊 Generating evaluation summary...")
         
@@ -396,7 +397,8 @@ class EpochEvaluator:
             'success_rate': 0.0
         }
         
-        for task_name, result in eval_results.items():
+        for task_name in task_names:
+            result = eval_results[task_name]
             task_result = {
                 'status': result['status'],
                 'execution_time': result.get('execution_time', 0),
