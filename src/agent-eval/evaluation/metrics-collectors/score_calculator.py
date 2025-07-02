@@ -130,7 +130,7 @@ class ScoreCalculator:
     
     def _load_evaluation_summary(self, epoch: str) -> Optional[Dict[str, Any]]:
         """Load evaluation summary from file if it exists"""
-        summary_file = self.base_dir / "epochs" / epoch / "evaluation_summary.json"
+        summary_file = self.base_dir / "epochs" / epoch / "validation" / "evaluation_summary.json"
         if summary_file.exists():
             try:
                 with open(summary_file, 'r') as f:

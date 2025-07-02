@@ -39,7 +39,7 @@ class ReportGenerator:
             formats = ['json', 'csv']
         
         if output_dir is None:
-            output_dir = self.base_dir / "epochs" / epoch / "metrics"
+            output_dir = self.base_dir / "epochs" / epoch / "validation" / "metrics"
             output_dir.mkdir(parents=True, exist_ok=True)
         else:
             output_dir = Path(output_dir)

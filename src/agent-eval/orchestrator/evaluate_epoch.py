@@ -49,8 +49,8 @@ def run_evaluation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
     }
 
     try:
-        agent_src_dir = base_dir / "epochs" / epoch_name / "agent-src"
-        task_run_dir = base_dir / "epochs" / epoch_name / "runs" / task_name
+        agent_src_dir = base_dir / "epochs" / epoch_name / "validation" / "agent-src"
+        task_run_dir = base_dir / "epochs" / epoch_name / "validation" / "runs" / task_name
 
         if not agent_src_dir.exists():
             raise FileNotFoundError(f"Agent source directory not found: {agent_src_dir}")
@@ -171,7 +171,7 @@ def run_validation_task(args: Tuple[str, str, Path, int]) -> Dict[str, Any]:
     }
 
     try:
-        validation_dir = base_dir / "epochs" / epoch_name / "runs" / task_name
+        validation_dir = base_dir / "epochs" / epoch_name / "validation" / "runs" / task_name
         
         if not validation_dir.exists():
             raise FileNotFoundError(f"Task run directory not found: {validation_dir}")
@@ -260,9 +260,9 @@ class EpochEvaluator:
         print(f"🔍 Starting evaluation of {epoch_name}")
         
         # Validate epoch exists
-        epoch_dir = self.base_dir / "epochs" / epoch_name
+        epoch_dir = self.base_dir / "epochs" / epoch_name / "validation"
         if not epoch_dir.exists():
-            raise ValueError(f"Epoch directory not found: {epoch_dir}")
+            raise ValueError(f"Epoch validation directory not found: {epoch_dir}")
         
         # Setup tasks
         task_names = self._setup_tasks(epoch_name)
@@ -290,7 +290,7 @@ class EpochEvaluator:
         summary = self._generate_evaluation_summary(epoch_name, evaluation_results, validation_results, task_names)
         
         # Save the detailed summary that metrics collectors will use
-        summary_file = self.base_dir / "epochs" / epoch_name / "evaluation_summary.json"
+        summary_file = self.base_dir / "epochs" / epoch_name / "validation" / "evaluation_summary.json"
         with open(summary_file, 'w') as f:
             json.dump(summary, f, indent=2, default=str)
         print(f"\n💾 Detailed evaluation summary saved to: {summary_file.relative_to(self.base_dir.parent)}")
@@ -331,7 +331,7 @@ class EpochEvaluator:
                 
                 # Save detailed docker output for debugging (for both success and failure)
                 if 'docker_output' in result:
-                    task_run_dir = self.base_dir / "epochs" / result['epoch_name'] / "runs" / task_name
+                    task_run_dir = self.base_dir / "epochs" / result['epoch_name'] / "validation" / "runs" / task_name
                     task_run_dir.mkdir(parents=True, exist_ok=True)
                     
                     # Save stdout and stderr as separate text files
@@ -352,7 +352,7 @@ class EpochEvaluator:
         """Copy default workspaces to epoch runs directory."""
         print("📁 Setting up tasks...")
         default_workspaces = self.base_dir / "default-workspaces"
-        epoch_runs = self.base_dir / "epochs" / epoch_name / "runs"
+        epoch_runs = self.base_dir / "epochs" / epoch_name / "validation" / "runs"
         
         if not default_workspaces.exists():
             raise ValueError(f"Default workspaces not found: {default_workspaces}")
